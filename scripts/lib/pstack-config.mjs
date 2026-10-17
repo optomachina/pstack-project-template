@@ -40,6 +40,8 @@ export function parsePstackConfig(input) {
   if (config.version !== PSTACK_CONFIG_VERSION) problems.push(`version must be ${PSTACK_CONFIG_VERSION}`);
   if (typeof config.project?.name !== "string" || config.project.name.trim() === "") problems.push("project.name is required");
   if (typeof config.project?.owner !== "string" || config.project.owner.trim() === "") problems.push("project.owner is required");
+  const handle = config.project?.ownerHandle;
+  if (handle !== undefined && !(typeof handle === "string" && (PLACEHOLDER.test(handle) || /^@[A-Za-z0-9][\w.-]*(?:\/[\w.-]+)?$/.test(handle)))) problems.push("project.ownerHandle must be a GitHub @user or @org/team");
 
   const journey = config.journeyTests ?? {};
   checkGlobs("journeyTests.userVisible", journey.userVisible, problems, { required: true });

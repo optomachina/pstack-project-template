@@ -42,7 +42,7 @@ Then, in the project:
 1. Edit `pstack.config.json`: set `journeyTests.userVisible` to your UI paths and `journeyTests.journeyTests` to where journey specs live. Check `autoMerge.categories` and `preflight.stages`.
 2. Add project globs to `docs/sensitive-paths.json` (adding is free), then run `npm run sensitive-paths:render`.
 3. Fill the `project:begin` / `project:end` blocks in `AGENTS.md`, `CLAUDE.md`, the runbooks and `ci.yml` (project CI setup and extra jobs).
-4. Ask the owner to apply [branch protection](docs/runbooks/branch-protection.md) (a protected action): required checks `ci` and `pr-body`.
+4. Ask the owner to apply [branch protection](docs/runbooks/branch-protection.md) (a protected action): required checks `ci` and `pr-body`, and "Require review from Code Owners" (without it a PR can edit the workflows that gate it).
 5. Optional: set the `JEV_ENDPOINT` / `JEV_API_KEY` repository secrets to enable the Jev screen.
 
 ## Updating a project
@@ -52,7 +52,7 @@ Re-run `node scripts/sync-template.mjs <project>`. It:
 - overwrites managed files but keeps everything between `<!-- project:begin [id] -->` and `<!-- project:end [id] -->` lines (matched by id, or by position for unnamed blocks). It keeps blocks the template dropped, appended at the end, with a warning. Markers work inside any comment syntax (`# <!-- project:begin x -->` in YAML);
 - never overwrites `pstack.config.json`;
 - adds new template sensitive globs and classes to the project's list, and never removes or reclassifies the project's own;
-- fills `{{PROJECT}}`, `{{OWNER}}` and `{{DEFAULT_BRANCH}}` in Markdown and workflow files from `pstack.config.json`;
+- fills `{{PROJECT}}`, `{{OWNER}}` and `{{DEFAULT_BRANCH}}` in Markdown, workflow and CODEOWNERS files from `pstack.config.json`, and `{{OWNER_HANDLE}}` (the gate's code owner in `.github/CODEOWNERS`) from `project.ownerHandle`, defaulting to `@optomachina`;
 - regenerates the AGENTS.md sensitive block from the project's list;
 - writes `.pstack-template-version` (template name, version, commit, sync time, file hashes).
 
