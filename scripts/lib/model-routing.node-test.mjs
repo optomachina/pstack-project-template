@@ -350,3 +350,59 @@ for (const entryIndex of [0, 1]) {
     });
   }
 }
+
+// Capability transition is a separate inactive version; legacy assertions above stay intact.
+const v2 = await import('./model-routing.mjs');
+const fixturesV2 = await import('../fixtures/model-routing/synthetic.mjs');
+const routeV2 = f => {const r=v2.resolveRoutingV2(f);assert.equal(v2.validateV2('receipt',r).valid,true,JSON.stringify(v2.validateV2('receipt',r)));return r;};
+test('v2 schemas match files and do not extend legacy closed objects',()=>{
+  for(const [name,s] of Object.entries(v2.schemasV2)) {
+    const file=name==='reviewCompletion'?'review-completion.v1':name==='reviewCompletionContext'?'review-completion-context.v1':name+'.v2';
+    assert.deepEqual(JSON.parse(readFileSync(new URL(`../../schemas/model-routing/${file}.schema.json`,import.meta.url))),s);
+  }
+  assert.equal(validate('policy',fixturesV2.fixtureV2().policy).valid,false);
+});
+test('v2 high risk preserves distinct correctness and deep sessions, deterministic unknown observation',()=>{
+  const f=deepFreeze(fixturesV2.fixtureV2());const r=routeV2(f);
+  assert.equal(r.status,'planned');assert.equal(r.reviewPlans.length,2);
+  assert.notEqual(r.reviewPlans[0].selection.executionId,r.reviewPlans[1].selection.executionId);
+  assert.equal(canonicalJSON(r),canonicalJSON(routeV2(f)));assert.equal(r.contextDigest,digest(f.trustedContext));
+});
+test('v2 explicitly unavailable primaries select approved native xhigh fallback without retry',()=>{
+  const f=fixturesV2.fixtureV2();fixturesV2.unavailableV2(f,'review-entry');fixturesV2.unavailableV2(f,'deep-entry');
+  const r=routeV2(f);assert.equal(r.status,'planned');assert.equal(r.fallbackEvidence.length,2);
+  for(const p of r.reviewPlans){assert.equal(p.selection.model,'fake-astra-1');assert.equal(p.selection.plannedEmission.value,'xhigh');assert.equal(p.selection.observedEffective.model,'unknown');}
+});
+for(const [name,mutate] of Object.entries({
+  unknownQuota:f=>{f.trustedContext.evidence.find(e=>e.scope==='review-entry'&&e.kind==='availability').status='unknown';},
+  staleQuota:f=>{fixturesV2.unavailableV2(f,'review-entry');f.trustedContext.evidence.find(e=>e.scope==='review-entry'&&e.kind==='availability').expiresAt=f.now;},
+  noFailureEvidence:f=>{f.trustedContext.evidence.find(e=>e.scope==='review-entry'&&e.kind==='availability').status='unavailable';},
+  noCapability:f=>{f.catalog.entries[1].reviewCapabilities=[];},
+  missingCoverage:f=>{f.catalog.entries[1].reviewCoverage=[];},
+  removedDeep:f=>{f.policy.reviewRules[2].slots.pop();},
+  duplicateSlot:f=>{f.policy.reviewRules[2].slots[1].id='correctness';},
+  unlistedFallback:f=>{f.policy.reviewRules[2].slots[0].binding.fallbackProfiles=['hidden'];},
+  unsupportedFallbackEffort:f=>{fixturesV2.unavailableV2(f,'review-entry');f.policy.profiles.find(p=>p.id==='astra-c').effort.value='ultra';},
+  paidFallback:f=>{fixturesV2.unavailableV2(f,'review-entry');f.trustedContext.evidence.find(e=>e.scope==='astra-c-entry'&&e.kind==='entitlement').billing='none';},
+  sharedReviewer:f=>{for(const e of f.trustedContext.evidence)if(e.scope==='deep-entry')e.executionId='reviewer-1';},
+  cumulativeBudget:f=>{f.trustedContext.budget.ceiling.tokens=250;},
+  inheritedRepairBudget:f=>{f.trustedContext.budget.repairRounds=2;},
+  requestInjection:f=>{f.request.reviewRules=[];},
+  contextInjection:f=>{f.trustedContext.reviews=[];},
+  malformedPolicy:f=>{f.policy.unknown=true;},
+  conflictingTuple:f=>{f.catalog.entries.at(-1).family='renamed-family';},
+})) test('v2 fail closed '+name,()=>{const f=fixturesV2.fixtureV2();mutate(f);fixturesV2.rebindV2(f);assert.equal(routeV2(f).status,'blocked');});
+test('v2 explicit diversity survives fallback and provider-family renaming',()=>{
+  const f=fixturesV2.fixtureV2();fixturesV2.unavailableV2(f,'review-entry');f.policy.reviewRules[2].slots[0].crossFamily=true;
+  f.trustedContext.writer.provider='fake-c';f.trustedContext.writer.family='different-family';fixturesV2.rebindV2(f);
+  assert.equal(routeV2(f).status,'blocked');
+});
+test('v2 planned producer still cannot review itself',()=>{
+  const f=fixturesV2.fixtureV2();f.trustedContext.reviewSubject={kind:'planned_output',unitId:'unit',attemptId:'attempt-1'};
+  f.trustedContext.execution.executionId='reviewer-1';for(const e of f.trustedContext.evidence)if(e.scope==='writer-entry')e.executionId='reviewer-1';
+  fixturesV2.rebindV2(f);assert.equal(routeV2(f).status,'blocked');
+});
+test('v2 legacy named binding cannot use capability fallback',()=>{
+  const f=fixturesV2.fixtureV2();f.policy.reviewRules[2].slots[0].binding={kind:'named',provider:'fake-b',model:'fake-review-1',family:'family-b',explicitEffort:'high',profiles:['review']};
+  fixturesV2.unavailableV2(f,'review-entry');fixturesV2.rebindV2(f);assert.equal(routeV2(f).status,'blocked');
+});

@@ -41,3 +41,45 @@ export function withOverride(input = fixture()) {
   input.request.requestedProfile = null;
   return rebind(input);
 }
+
+export const correctnessCoverage = ['contracts','invalid-input','tests','documentation','regressions'];
+export const deepCoverage = ['security','data-money','architecture','concurrency','gate-integrity','sensitive-files','adversarial-evidence'];
+export function rebindV2(f) {
+  f.policy.catalogDigest = digest(f.catalog);
+  f.trustedContext.catalogDigest = digest(f.catalog);
+  f.trustedContext.policyDigest = digest(f.policy);
+  for (const k of ['projectId','repoId','sourceSha','baseSha','unitId','attemptId','ownerId','policyDigest','reviewPolicyDigest','catalogDigest','role','risk']) f.request[k] = f.trustedContext[k];
+  for (const e of f.trustedContext.evidence) e.digest = e.kind === 'budget'
+    ? digest(f.trustedContext.budget) : digest(f.catalog.entries.find(c => c.id === e.scope));
+  return f;
+}
+export function fixtureV2() {
+  const f = fixture(), t = f.trustedContext;
+  f.policy.schema = 'model-routing.policy.v2'; f.catalog.schema = 'model-routing.catalog.v2';
+  t.schema = 'model-routing.context.v2'; delete t.reviews;
+  t.reviewSubject = {kind:'existing_artifact',sourceSha:t.sourceSha,artifactDigest:'a'.repeat(64)};
+  t.artifactDigest = t.reviewSubject.artifactDigest; t.diffDigest = 'b'.repeat(64);
+  for (const e of f.catalog.entries) { e.reviewCapabilities=['correctness','deep']; e.reviewCoverage=[...correctnessCoverage,...deepCoverage]; }
+  const reviewEntry = f.catalog.entries[1], templateProofs = t.evidence.filter(e=>e.scope===reviewEntry.id);
+  for (const [id, model, executionId, provider, family] of [
+    ['deep-entry','fake-deep-1','deep-1','fake-b','family-b'],
+    ['astra-c-entry','fake-astra-1','astra-c-1','fake-c','family-c'],
+    ['astra-d-entry','fake-astra-1','astra-d-1','fake-c','family-c'],
+  ]) {
+    const entry = {...structuredClone(reviewEntry),id,model,provider,family};
+    if (id.startsWith('astra')) entry.supportedEfforts.push('xhigh');
+    f.catalog.entries.push(entry);
+    f.policy.profiles.push({...structuredClone(f.policy.profiles[2]),id:id.replace('-entry',''),entryId:id,effort:{kind:'explicit',value:id.startsWith('astra')?'xhigh':'high'}});
+    t.evidence.push(...templateProofs.map(e=>({...e,scope:id,reference:id+'-'+e.kind,executionId})));
+  }
+  for(const e of t.evidence)e.failure=null;
+  const slot = (id,primary,fallback,coverage) => ({id,independent:true,crossFamily:false,binding:{kind:'capability',capability:id,coverage,primaryProfiles:[primary],fallbackProfiles:[fallback],fallbackWhen:'confirmed_unavailable'}});
+  const correctness=slot('correctness','review','astra-c',correctnessCoverage);
+  const deep=slot('deep','deep','astra-d',deepCoverage);
+  f.policy.reviewRules=[{risk:'low',slots:[]},{risk:'moderate',slots:[structuredClone(correctness)]},{risk:'high',slots:[correctness,deep]}];
+  return rebindV2(f);
+}
+export function unavailableV2(f, entryId) {
+  const e=f.trustedContext.evidence.find(x=>x.scope===entryId&&x.kind==='availability');
+  e.status='unavailable';e.failure={code:'quota_exhausted',resetAt:null};return f;
+}

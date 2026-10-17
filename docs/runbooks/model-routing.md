@@ -203,3 +203,53 @@ are still required at the exact draft head. No PR boundary preflight, live adapt
 validation, sync, activation or merge is claimed by these unit tests. The cohesive
 schemas/resolver/fixtures exceed the usual small-PR guideline; keep this draft as
 one reviewable contract unit, then scope later integrations separately.
+
+## Capability transition T1 (inactive v2)
+
+`resolveRoutingV2` is explicit opt-in. V1 schemas and named binding behavior remain
+readable and unchanged. V2 policy/context/catalog/receipt schemas are separate;
+the request retains the closed v1 shape because it only references policy digests.
+V2 overrides currently block explicitly; v1 override behavior is unchanged.
+
+The trusted policy supplies `reviewRules` for every risk. Moderate risk retains a
+correctness slot; high retains correctness and a distinct deep slot. Extra slots
+can be required. A slot has a closed binding union: `named` pins exact identity
+and native effort; `capability` lists primary/fallback profiles and required
+coverage. A fallback is eligible only when every primary has fresh, digest-bound
+availability evidence explicitly marked unavailable with a failure code. Reset
+hints are recorded, never treated as restored availability. Unknown or stale quota
+cannot trigger fallback. No retry calls are performed by the planner.
+
+Catalog entries declare approved coverage. Profiles pin native effort; the planner
+never translates Claude high into GPT xhigh. The completed attempt's requested
+identity is its selected approved binding; earlier unavailable attempts retain
+separate receipts. Distinct slots need distinct execution IDs. V2 also rejects
+same-provider relabeling when cross-family diversity is required. It does not
+remove or reinterpret an existing named or cross-family obligation.
+
+V2 catalog entries may represent separately evidenced execution bindings for the
+same exact model/surface/runtime/adapter tuple. Their contracts must match except
+for entry ID, and their evidence is separately scoped. This permits two independent
+Astra sessions for two required slots without inventing different model families.
+The projection into shared v1 checks is internal: original input/entry digests are
+validated before projection and original digests are preserved in v2 receipts.
+
+`validateReviewCompletions` consumes a v2 plan, strict completion receipts and a
+separate strict authenticated-controller context. Acceptance means the supplied
+authenticated declarations are consistent, not that this library authenticated a
+provider, read an output artifact or mutated replay/budget state. The caller must
+authenticate each observation issuer and bind its receipt/result digest and runtime
+identity to genuine evidence. Requested values alone cannot satisfy this check.
+
+Only existing-artifact reviews can complete: bind the actual produced head,
+artifact/diff digest and authors in a fresh plan first. A planned-output receipt
+cannot certify a not-yet-produced artifact. Required observations must be known and
+match the planned provider/model/family/effort, adapter and executor. Missing/stale
+receipts, duplicate slots/outputs/executions, unresolved actionable findings and
+failed/skipped/timed-out tests block. Required tests must name the exact head.
+
+Completion context carries pre-batch cumulative consumption (including prior
+failed attempts), unchanged-or-tighter ceilings and inherited counters. Submitted
+receipt usage is added once for this batch; the controller must atomically consume
+it and persist replay IDs after acceptance. Neither planning nor this validator
+reserves resources. The 19 original runtime integration deferrals remain open.
