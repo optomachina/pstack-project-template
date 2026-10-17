@@ -31,9 +31,9 @@ function validObservation(receipt, context, time) {
 
 function budgetProblem(plan, receipts, context, time) {
   const b = context.budget, prior = plan.budget;
-  if (!prior || dimensions.some(k => b.ceiling[k] > plan.appliedBudgetLimits[k] || b.consumed[k] < prior.consumed[k])) return true;
+  if (!prior || !plan.appliedCounterLimits || dimensions.some(k => b.ceiling[k] > plan.appliedBudgetLimits[k] || b.consumed[k] < prior.consumed[k])) return true;
   for (const [counter, maximum] of [['repairRounds','maxRepairRounds'],['noProgress','maxNoProgress'],['similarFailures','maxSimilarFailures']]) {
-    if (b[counter] < prior[counter] || b[counter] >= context.limits[maximum]) return true;
+    if (context.limits[maximum] > plan.appliedCounterLimits[maximum] || b[counter] < prior[counter] || b[counter] >= context.limits[maximum]) return true;
   }
   return time >= Date.parse(b.deadline) || Date.parse(b.deadline) > Date.parse(prior.deadline) ||
     dimensions.some(k => receipts.reduce((sum, r) => sum + r.usage[k], b.consumed[k]) > b.ceiling[k]);

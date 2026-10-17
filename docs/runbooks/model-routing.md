@@ -286,3 +286,37 @@ separate authenticated adoption/completion package; live CI transport/admission 
 not wired by this patch. New dependencies are copied from base only. Missing legacy
 gate code blocks bootstrap and requires a separate owner-governed transition, never
 an automatic PR-head substitution. No current review is silently reclassified.
+
+
+### Boundary-hardening draft contract
+
+The inactive v2 receipt now requires `appliedCounterLimits`, copied from the
+approved policy's `maxRepairRounds`, `maxNoProgress` and `maxSimilarFailures`.
+Blocked plans carry null; completion rejects null, missing or altered bound limits.
+Completion maxima may only stay equal or tighten, counters cannot reset, and
+reaching any applicable limit blocks. Earlier unpublished v2 receipts lacking this
+field are rejected; v1 receipts retain their original contract. These checks do not
+replace the controller's atomic budget/replay persistence.
+
+Every gate Git operation uses the base-verified sensitive-paths helper, including
+ancestry, base reads, commit/tree resolution, both patches, inventory and size.
+It never searches PATH. The default is `/usr/bin/git`; a trusted launcher may set
+`PSTACK_GIT` only to an absolute executable whose canonical file and ancestors are
+root-owned and not group/world-writable. Missing or unverified executables block.
+A checkout-local executable is never a supported override. The trusted launcher
+must protect the override, Git/Node installation and environment; these checks do
+not defend against a compromised host, root or controller, nor claim to sanitize
+all Git environment variables or authenticate review issuers.
+
+Raw current and adoption patches use `--binary --no-ext-diff --no-textconv
+--ignore-submodules=none`, preserving the final newline. Text conversion is a
+presentation feature and cannot enter evidence identity. Inventory retains
+`--no-renames` and NUL-delimited paths; size retains base-configured exclusions.
+Any old proposal or source-review digest must be rebound and independently reviewed
+under this convention before use; this patch creates no authorization.
+
+Owner syntax supports the configured `@user` and `@org/team` forms in both policy
+and transition authorization. Enabled policy/configuration and authenticated
+owner declarations must still agree exactly. Team syntax does not authenticate
+membership or authority; the controller must authenticate the authorizing actor.
+The disabled null-owner seed remains unchanged.

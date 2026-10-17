@@ -132,3 +132,23 @@ When a base policy is enabled, the legacy gate explicitly blocks with
 `adopted_policy_requires_v2` before consulting Jev. Unknown policy versions block
 instead of being parsed as v1. Unchanged bases without a policy, and explicit
 unresolvable-base fail-closed v1 reporting, retain their existing compatibility.
+
+
+### Inactive v2 boundary hardening
+
+The v2 gate and base readers share the verified system Git executor in
+`scripts/lib/sensitive-paths.mjs`; project PATH and npm's local executable prefix
+cannot choose Git. `/usr/bin/git` is the default. A trusted launcher may provide
+an absolute `PSTACK_GIT` override only with root-owned canonical executable and
+ancestors, none group/world-writable. Missing/unverified executables block; host,
+launcher, Node/Git installation and authenticated controller remain trusted.
+Current and adoption evidence use raw `--binary --no-ext-diff --no-textconv
+--ignore-submodules=none` patches, including final newline. This changes the
+unpublished evidence convention, so old proposal digests cannot authorize it.
+
+V2 completion binds the original policy's three repair/replan counter maxima in
+`appliedCounterLimits`, rejects later increases and counter resets, and blocks at
+equal-or-tighter limits. Supported team owners (`@org/team`) remain the configured
+owner through policy and authenticated authorization; exact equality and real
+actor authority are still required. See [model routing](model-routing.md) for the
+complete boundary and compatibility rules. The template policy remains disabled.

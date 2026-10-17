@@ -1370,6 +1370,39 @@
       "minItems": 0,
       "maxItems": 128,
       "uniqueItems": true
+    },
+    "appliedCounterLimits": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "maxRepairRounds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2
+            },
+            "maxNoProgress": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2
+            },
+            "maxSimilarFailures": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            }
+          },
+          "required": [
+            "maxRepairRounds",
+            "maxNoProgress",
+            "maxSimilarFailures"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "required": [
@@ -1396,7 +1429,8 @@
     "diffDigest",
     "policyRevision",
     "catalogRevision",
-    "fallbackEvidence"
+    "fallbackEvidence",
+    "appliedCounterLimits"
   ],
   "additionalProperties": false
 }

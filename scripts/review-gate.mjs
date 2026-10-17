@@ -49,6 +49,7 @@ import {
   parseSensitivePaths,
   readRefFile,
   readSensitivePathsText,
+  runGit,
 } from "./lib/sensitive-paths.mjs";
 
 export const REVIEW_GATE_SCHEMA = "review-gate.v1";
@@ -311,9 +312,8 @@ export async function runReviewGateV2({root,baseRef,headRef='HEAD',files,gate={s
     const loaded=policyApi.loadBaseReviewPolicy({root,baseRef});
     if(!adoption||!policyApi.validateReviewTransition({...adoption,policy:loaded.policy,now}))return fail('transition_authority_required');
     // The adoption head must already belong to this committed base history.
-    const {execFileSync}=await import('node:child_process');
-    execFileSync('git',['merge-base','--is-ancestor',adoption.transition.headSha,baseRef],{cwd:root,stdio:'pipe'});
-    const revision=checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execFileSync,digest);
+    runGit(root,['merge-base','--is-ancestor',adoption.transition.headSha,baseRef]);
+    const revision=checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},digest);
     if(typeof revision==='string')return fail(revision);
     const sensitiveText=readRefFile(root,baseRef,SENSITIVE_PATHS_FILE), configText=readRefFile(root,baseRef,PSTACK_CONFIG_FILE);
     if(sensitiveText===null||configText===null)return fail('base_configuration_missing');
@@ -339,13 +339,13 @@ export async function runReviewGateV2({root,baseRef,headRef='HEAD',files,gate={s
   } catch {return fail('invalid_base_policy_or_authority');}
 }
 
-function checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execFileSync,digest) {
-    const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+function checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},digest) {
+    const git=(...args)=>runGit(root,args);
     const head=git('rev-parse','--verify','--end-of-options',`${headRef}^{commit}`).trim();
     const base=git('rev-parse','--verify','--end-of-options',`${baseRef}^{commit}`).trim();
     const treeSha=git('rev-parse',`${head}^{tree}`).trim();
-    const patch=digest(git('diff','--ignore-submodules=none','--binary','--no-ext-diff',base,head));
-    const adoptionPatch=digest(git('diff','--ignore-submodules=none','--binary','--no-ext-diff',adoption.transition.baseSha,adoption.transition.headSha));
+    const patch=digest(git('diff','--ignore-submodules=none','--binary','--no-ext-diff','--no-textconv',base,head));
+    const adoptionPatch=digest(git('diff','--ignore-submodules=none','--binary','--no-ext-diff','--no-textconv',adoption.transition.baseSha,adoption.transition.headSha));
     if(adoption.transition.patchDigest!==adoptionPatch)return 'transition_patch_mismatch';
     if(routingInput&&['policy','trustedContext','request'].some(k=>routingInput[k]?.repoId!==adoption.transition.repoId))return 'repository_binding_mismatch';
     if(routingInput&&(routingInput.trustedContext?.sourceSha!==head||routingInput.trustedContext?.baseSha!==base||

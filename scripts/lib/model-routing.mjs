@@ -5532,6 +5532,39 @@ function bundledV2Schemas() {
           "minItems": 0,
           "maxItems": 128,
           "uniqueItems": true
+        },
+        "appliedCounterLimits": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "maxRepairRounds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2
+                },
+                "maxNoProgress": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2
+                },
+                "maxSimilarFailures": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": [
+                "maxRepairRounds",
+                "maxNoProgress",
+                "maxSimilarFailures"
+              ],
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "required": [
@@ -5558,7 +5591,8 @@ function bundledV2Schemas() {
         "diffDigest",
         "policyRevision",
         "catalogRevision",
-        "fallbackEvidence"
+        "fallbackEvidence",
+        "appliedCounterLimits"
       ],
       "additionalProperties": false
     },
@@ -6409,7 +6443,7 @@ function bundledV2Schemas() {
           "oneOf": [
             {
               "type": "string",
-              "pattern": "^@[A-Za-z0-9][A-Za-z0-9-]*$"
+              "pattern": "^@[A-Za-z0-9][\\w.-]*(?:\\/[\\w.-]+)?$"
             },
             {
               "type": "null"
@@ -6838,7 +6872,7 @@ function bundledV2Schemas() {
         },
         "ownerHandle": {
           "type": "string",
-          "pattern": "^@[A-Za-z0-9][A-Za-z0-9-]*$"
+          "pattern": "^@[A-Za-z0-9][\\w.-]*(?:\\/[\\w.-]+)?$"
         },
         "reference": {
           "type": "string",
@@ -6905,7 +6939,7 @@ function originalV2EvidenceProblem(catalog, context) {
 
 function v2Blocked(reason) {
   return freeze({ ...resolveRouting(null), schema: 'model-routing.receipt.v2', reason,
-    artifactDigest: null, diffDigest: null, policyRevision: null, catalogRevision: null, fallbackEvidence: [] });
+    artifactDigest: null, diffDigest: null, policyRevision: null, catalogRevision: null, fallbackEvidence: [], appliedCounterLimits: null });
 }
 
 function checkV2Input(input) {
@@ -7025,6 +7059,7 @@ function restoreV2Receipt(input, result, slots, fallbackEvidence) {
   out.artifactDigest = t.artifactDigest; out.diffDigest = t.diffDigest;
   out.policyRevision = input.policy.revision; out.catalogRevision = input.catalog.revision;
   out.fallbackEvidence = [...new Set(fallbackEvidence)];
+  out.appliedCounterLimits = Object.fromEntries(['maxRepairRounds','maxNoProgress','maxSimilarFailures'].map(k => [k,input.policy[k]]));
   for (const review of out.reviewPlans) review.obligation = cloneJSON(slots.find(s => s.id === review.obligationId));
   for (const selection of [out.selected, ...out.reviewPlans.map(r => r.selection)].filter(Boolean)) {
     for (const proof of selection.evidence) {
