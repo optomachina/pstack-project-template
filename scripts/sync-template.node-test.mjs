@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +7,7 @@ import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { checkAgentsParity, parseSensitivePaths } from "./lib/sensitive-paths.mjs";
-import { DEFAULT_OWNER_HANDLE, MANIFEST, PSTACK_SCRIPTS, VERSION_FILE, fillPlaceholders, main, mergeProjectBlocks, parseProjectBlocks, syncTemplate, unionSensitivePaths } from "./sync-template.mjs";
+import { DEFAULT_OWNER_HANDLE, MANIFEST, PSTACK_SCRIPTS, VERSION_FILE, fillPlaceholders, main, mergeProjectBlocks, parseProjectBlocks, renderSelf, syncTemplate, unionSensitivePaths } from "./sync-template.mjs";
 import { validateAgentContract } from "./validate-agent-contract.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -21,6 +22,16 @@ const tempDir = (prefix = "sync-target-") => {
 };
 const read = (dir, file) => readFileSync(join(dir, file), "utf8");
 const quiet = { stdout: () => {}, stderr: () => {} };
+const PROSE = /(?:\.(?:md|ya?ml)|(?:^|\/)CODEOWNERS)$/;
+/** A target whose pstack.config.json is the template's with the given project fields and edits. */
+const configuredTarget = (project, edit = () => {}) => {
+  const target = tempDir();
+  const config = JSON.parse(read(repoRoot, "pstack.config.json"));
+  config.project = { ...config.project, ...project };
+  edit(config);
+  writeFileSync(join(target, "pstack.config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  return target;
+};
 
 describe("project blocks", () => {
   it("keeps target block bodies by id and by position", () => {
@@ -75,6 +86,8 @@ describe("sensitive list union and placeholders", () => {
     assert.equal(fillPlaceholders("{{OWNER_HANDLE}}", { project: { ownerHandle: "@acme/platform" } }), "@acme/platform");
     assert.equal(fillPlaceholders("{{OWNER_HANDLE}}", { project: { ownerHandle: "{{OWNER_HANDLE}}" } }), DEFAULT_OWNER_HANDLE);
     assert.equal(fillPlaceholders("{{OWNER_HANDLE}}", {}), "@optomachina");
+    assert.equal(fillPlaceholders("{{DEFAULT_BRANCH}}", {}), "main");
+    assert.equal(fillPlaceholders("{{DEFAULT_BRANCH}}", { project: { defaultBranch: "{{DEFAULT_BRANCH}}" } }), "main");
   });
 });
 
@@ -145,6 +158,49 @@ describe("syncTemplate", () => {
     assert.deepEqual(validateAgentContract(target), []);
   });
 
+  it("uses project.defaultBranch everywhere: workflows, runbooks and gh api commands", () => {
+    const target = configuredTarget({ name: "Acme", owner: "Dana", defaultBranch: "master" });
+    syncTemplate({ target });
+    for (const { path } of MANIFEST.filter((entry) => PROSE.test(entry.path))) {
+      const text = read(target, path);
+      assert.ok(!text.includes("{{DEFAULT_BRANCH}}"), `${path} has no branch placeholder`);
+      assert.doesNotMatch(text, /\bmain\b/, `${path} does not name main`);
+    }
+    assert.match(read(target, ".github/workflows/ci.yml"), /^ {2}push:\n {4}branches: \["master"\]$/m);
+    const protection = read(target, "docs/runbooks/branch-protection.md");
+    assert.match(protection, /gh api --method PUT repos\/\$REPO\/branches\/master\/protection/);
+    assert.match(protection, /gh api --method DELETE repos\/\$REPO\/branches\/master\/protection/);
+    assert.match(read(target, "docs/runbooks/pr-lifecycle.md"), /--base-ref origin\/master /);
+    assert.match(read(target, "docs/runbooks/merge-and-rollback.md"), /origin\/master$/m);
+    assert.deepEqual(validateAgentContract(target), []);
+  });
+
+  it("defaults the branch to main and refuses a branch name that is not one", () => {
+    const target = configuredTarget({ name: "Acme", owner: "Dana", defaultBranch: undefined });
+    syncTemplate({ target });
+    assert.match(read(target, ".github/workflows/ci.yml"), /branches: \["main"\]/);
+    const bad = configuredTarget({ name: "Acme", owner: "Dana", defaultBranch: 'x"]\n  workflow_dispatch:' });
+    assert.throws(() => syncTemplate({ target: bad }), /defaultBranch .* is not a branch name/);
+    assert.equal(existsSync(join(bad, "AGENTS.md")), false, "nothing written");
+  });
+
+  it("ships gate tests that pass against a project config with different globs", () => {
+    const target = configuredTarget({ name: "Acme", owner: "Dana", ownerHandle: "@acme/platform" }, (config) => {
+      config.journeyTests.userVisible = ["web/ui/**"];
+      config.journeyTests.journeyTests = ["playwright/journeys/**"];
+      config.prSize = { maxChangedLines: 10, exclude: [] };
+      config.autoMerge.excludeKeywords = ["guide"];
+      for (const category of config.autoMerge.categories) category.include = [`acme-only/${category.id}/**`];
+    });
+    syncTemplate({ target });
+    const tests = MANIFEST.map((entry) => entry.path).filter((path) => path.endsWith(".node-test.mjs"));
+    const env = { ...process.env, JEV_ENDPOINT: "", JEV_API_KEY: "" };
+    delete env.NODE_TEST_CONTEXT; // run as a top-level test run, not a child of this one
+    const proc = spawnSync(process.execPath, ["--test", ...tests], { cwd: target, encoding: "utf8", env });
+    assert.equal(proc.status, 0, proc.stdout + proc.stderr);
+    for (const path of ["scripts/review-gate.node-test.mjs", "scripts/check-journey-tests.node-test.mjs", "scripts/gate-workflows.node-test.mjs"]) assert.ok(tests.includes(path), path);
+  });
+
   it("writes nothing on --dry-run", () => {
     const target = tempDir();
     const lines = [];
@@ -178,6 +234,19 @@ describe("syncTemplate", () => {
   });
 
   it("covers every template-managed file that exists in the template", () => {
-    for (const { path } of MANIFEST) assert.ok(existsSync(join(repoRoot, path)), path);
+    for (const { path, source } of MANIFEST) assert.ok(existsSync(join(repoRoot, source ?? path)), source ?? path);
+  });
+});
+
+describe("the template repository itself", () => {
+  it("runs workflows rendered from templates/ for its own default branch", () => {
+    const stale = renderSelf({ check: true }).filter((result) => !result.current);
+    assert.deepEqual(stale, [], "edit templates/.github/workflows/, then run npm run render-self");
+    assert.match(read(repoRoot, ".github/workflows/ci.yml"), /branches: \["main"\]/);
+    for (const { path } of MANIFEST.filter((entry) => entry.source)) assert.doesNotMatch(read(repoRoot, path), /\{\{[A-Z_]+\}\}/, path);
+  });
+
+  it("ships the template's pstack.config.json as the gate tests' fixture", () => {
+    assert.equal(read(repoRoot, "scripts/fixtures/pstack-config/template.json"), read(repoRoot, "pstack.config.json"));
   });
 });

@@ -13,8 +13,8 @@ import { categorize, countChangedLines, decide, finalTier, main, parseArgs, runR
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const sensitivePaths = loadSensitivePaths({ root: repoRoot });
-const pstackText = readFileSync(join(repoRoot, "pstack.config.json"), "utf8");
-// The template's own auto-merge categories, so the tests do not depend on a project's edits.
+// The template's own auto-merge categories (a fixture), so the tests do not depend on a project's edits.
+const pstackText = readFileSync(join(repoRoot, "scripts/fixtures/pstack-config/template.json"), "utf8");
 const pstackConfig = parsePstackConfig(pstackText);
 const accepted = (choice, confidence = 0.9) => ({ status: "accepted", choice, confidence });
 
@@ -25,6 +25,14 @@ after(() => {
 const tempDir = (prefix) => {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   temps.push(dir);
+  return dir;
+};
+/** A root with the project's sensitive list and the template's pstack config, for runs that read configs from disk. */
+const fixtureRoot = () => {
+  const dir = tempDir("review-gate-root-");
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  writeFileSync(join(dir, SENSITIVE_PATHS_FILE), readFileSync(join(repoRoot, SENSITIVE_PATHS_FILE)));
+  writeFileSync(join(dir, "pstack.config.json"), pstackText);
   return dir;
 };
 const git = (cwd, ...args) => execFileSync("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false", ...args], { cwd, encoding: "utf8" });
@@ -160,7 +168,7 @@ describe("Jev client", () => {
 
   it("feeds a configured screen into the gate", async () => {
     const ask = async () => ({ ok: true, model: "m", answers: { tier: { type: "choice", choice: "risky", confidence: 0.9 }, incident: { type: "noul", noul: 0.3 } } });
-    const decision = await runReviewGate({ root: repoRoot, files: ["docs/a.md"], ask });
+    const decision = await runReviewGate({ root: fixtureRoot(), files: ["docs/a.md"], ask });
     assert.equal(decision.review_tier, "opus");
     assert.equal(decision.jev.p_incident, 0.3);
   });
@@ -216,7 +224,7 @@ describe("CLI and base ref", () => {
   it("returns 2 on usage errors and runs as a process", async () => {
     assert.equal(await main(["--base-ref"], { stderr: () => {} }), 2);
     assert.equal(await main(["--bogus"], { stderr: () => {} }), 2);
-    const proc = spawnSync(process.execPath, [join(repoRoot, "scripts/review-gate.mjs"), "--root", repoRoot, "--no-jev", "docs/guide.md"], { encoding: "utf8", env: { ...process.env, JEV_ENDPOINT: "" } });
+    const proc = spawnSync(process.execPath, [join(repoRoot, "scripts/review-gate.mjs"), "--root", fixtureRoot(), "--no-jev", "docs/guide.md"], { encoding: "utf8", env: { ...process.env, JEV_ENDPOINT: "" } });
     assert.equal(proc.status, 0);
     assert.match(proc.stdout, /review tier sonnet/);
     assert.match(proc.stdout, /auto-merge eligible/);

@@ -51,6 +51,7 @@
 
     { "glob": ".github/workflows/**", "class": "infra_ci" },
     { "glob": ".github/actions/**", "class": "infra_ci" },
+    { "glob": "templates/.github/**", "class": "infra_ci" },
     { "glob": ".github/CODEOWNERS", "class": "infra_ci" },
     { "glob": ".github/pull_request_template.md", "class": "infra_ci" },
     { "glob": "**/{infra,terraform,deploy,k8s,helm,ops}/**", "class": "infra_ci" },
@@ -68,6 +69,7 @@
     { "glob": "scripts/lib/**", "class": "infra_ci" },
     { "glob": "scripts/sensitive-paths*", "class": "infra_ci" },
     { "glob": "scripts/fixtures/sensitive-paths/**", "class": "infra_ci" },
+    { "glob": "scripts/fixtures/pstack-config/**", "class": "infra_ci" },
     { "glob": "scripts/review-gate*", "class": "infra_ci" },
     { "glob": "scripts/jev-client*", "class": "infra_ci" },
     { "glob": "scripts/check-journey-tests*", "class": "infra_ci" },

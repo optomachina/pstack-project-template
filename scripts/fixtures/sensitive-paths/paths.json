@@ -35,6 +35,8 @@
     { "path": "src/env.ts", "classes": ["secrets"] },
     { "path": ".github/workflows/ci.yml", "classes": ["infra_ci"] },
     { "path": ".github/workflows/café.yml", "classes": ["infra_ci"] },
+    { "path": "templates/.github/workflows/ci.yml", "classes": ["infra_ci"] },
+    { "path": "scripts/fixtures/pstack-config/template.json", "classes": ["infra_ci"] },
     { "path": "infra/main.tf", "classes": ["infra_ci"] },
     { "path": "Dockerfile", "classes": ["infra_ci"] },
     { "path": "docker-compose.yml", "classes": ["infra_ci"] },

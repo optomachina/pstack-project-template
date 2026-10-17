@@ -15,17 +15,27 @@
  *   union    docs/sensitive-paths.json: the template's classes and globs are
  *            added when missing; nothing in the target is removed or
  *            reclassified (adding is free, removing loosens the gate).
+ * An entry with a `source` is read from that template path instead of `path`:
+ * the workflows live in templates/.github/workflows/ with placeholders, and the
+ * template's own .github/workflows/ are rendered copies (--render-self) so the
+ * template repository runs the same gate on its own default branch.
  * After copying, the PROJECT, OWNER and DEFAULT_BRANCH placeholders in Markdown,
  * workflow and CODEOWNERS files are filled from the target's pstack.config.json
- * (when it has real values), OWNER_HANDLE from project.ownerHandle (default
- * DEFAULT_OWNER_HANDLE), the AGENTS.md
+ * (when it has real values; DEFAULT_BRANCH defaults to "main"), OWNER_HANDLE
+ * from project.ownerHandle (default DEFAULT_OWNER_HANDLE), the AGENTS.md
  * sensitive-paths block is regenerated from the target's list, and
  * .pstack-template-version records the template version, commit and file hashes.
  *
  * --project/--owner fill a freshly seeded pstack.config.json. --add-scripts adds
  * the pstack npm scripts to the target package.json without replacing any
  * existing script. Symlinked target files are never written.
- * Exit codes: 0 synced (or dry run), 2 usage error.
+ *
+ *   node scripts/sync-template.mjs --render-self [--check]
+ *
+ * re-renders the template's own copies of `source` entries from its
+ * pstack.config.json (--check only reports drift).
+ * Exit codes: 0 synced (or dry run, or rendered copies current), 1 rendered
+ * copies out of date (--check), 2 usage error.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -33,6 +43,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync,
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BRANCH_NAME, DEFAULT_BRANCH, PSTACK_CONFIG_FILE } from "./lib/pstack-config.mjs";
 import { invokedAsScript, parseSensitivePaths, replaceAgentsSensitiveBlock } from "./lib/sensitive-paths.mjs";
 
 export const TEMPLATE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,8 +67,8 @@ export const MANIFEST = Object.freeze([
   { path: "docs/runbooks/repair-budget.md", mode: "managed" },
   { path: "docs/runbooks/merge-and-rollback.md", mode: "managed" },
   { path: "docs/runbooks/branch-protection.md", mode: "managed" },
-  { path: ".github/workflows/ci.yml", mode: "managed" },
-  { path: ".github/workflows/pr-body-gate.yml", mode: "managed" },
+  { path: ".github/workflows/ci.yml", source: "templates/.github/workflows/ci.yml", mode: "managed" },
+  { path: ".github/workflows/pr-body-gate.yml", source: "templates/.github/workflows/pr-body-gate.yml", mode: "managed" },
   { path: ".github/pull_request_template.md", mode: "managed" },
   { path: ".github/CODEOWNERS", mode: "managed" },
   { path: "scripts/preflight.sh", mode: "managed" },
@@ -66,6 +77,7 @@ export const MANIFEST = Object.freeze([
   { path: "scripts/lib/sensitive-paths.node-test.mjs", mode: "managed" },
   { path: "scripts/lib/pstack-config.mjs", mode: "managed" },
   { path: "scripts/fixtures/sensitive-paths/paths.json", mode: "managed" },
+  { path: "scripts/fixtures/pstack-config/template.json", mode: "managed" },
   { path: "scripts/sensitive-paths-report.mjs", mode: "managed" },
   { path: "scripts/sensitive-paths-report.node-test.mjs", mode: "managed" },
   { path: "scripts/validate-agent-contract.mjs", mode: "managed" },
@@ -169,11 +181,13 @@ export function unionSensitivePaths(templateText, targetText) {
 
 /**
  * Fill {{PROJECT}}, {{OWNER}}, {{DEFAULT_BRANCH}} and {{OWNER_HANDLE}} from a config whose values are
- * real (not placeholders). OWNER_HANDLE falls back to DEFAULT_OWNER_HANDLE so CODEOWNERS always names an owner.
+ * real (not placeholders). DEFAULT_BRANCH falls back to DEFAULT_BRANCH ("main") so workflows always
+ * name a branch, and OWNER_HANDLE to DEFAULT_OWNER_HANDLE so CODEOWNERS always names an owner.
  */
 export function fillPlaceholders(text, config) {
   const real = (value) => typeof value === "string" && value.trim() !== "" && !/\{\{/.test(value);
-  const values = { PROJECT: config?.project?.name, OWNER: config?.project?.owner, DEFAULT_BRANCH: config?.project?.defaultBranch };
+  const values = { PROJECT: config?.project?.name, OWNER: config?.project?.owner };
+  values.DEFAULT_BRANCH = real(config?.project?.defaultBranch) ? config.project.defaultBranch : DEFAULT_BRANCH;
   values.OWNER_HANDLE = real(config?.project?.ownerHandle) ? config.project.ownerHandle : DEFAULT_OWNER_HANDLE;
   return text.replaceAll(/\{\{(PROJECT|OWNER|DEFAULT_BRANCH|OWNER_HANDLE)\}\}/g, (whole, key) => (real(values[key]) ? values[key] : whole));
 }
@@ -217,7 +231,7 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
 
   // 1. Compute every output from the template and the target's current files.
   for (const entry of MANIFEST) {
-    const source = readFileSync(path.join(templateRoot, entry.path), "utf8");
+    const source = readFileSync(path.join(templateRoot, entry.source ?? entry.path), "utf8");
     const destination = path.join(targetRoot, entry.path);
     const current = readIfExists(destination);
     let next;
@@ -246,6 +260,7 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
 
   // 2. Placeholders and the AGENTS.md sensitive block come from the target's own config and list.
   const config = JSON.parse(outputs.get("pstack.config.json").next);
+  checkDefaultBranch(config);
   const sensitive = parseSensitivePaths(outputs.get("docs/sensitive-paths.json").next);
   for (const output of outputs.values()) {
     if (output.entry.mode !== "managed") continue;
@@ -293,9 +308,53 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
   return { actions, warnings, version };
 }
 
-const USAGE = "usage: sync-template.mjs <target-dir> [--dry-run] [--project <name>] [--owner <name>] [--add-scripts]";
+/** The branch is filled into workflow YAML and shell commands, so only plain branch names are accepted. */
+function checkDefaultBranch(config) {
+  const branch = config?.project?.defaultBranch;
+  if (branch === undefined || /\{\{/.test(String(branch))) return;
+  if (typeof branch !== "string" || !BRANCH_NAME.test(branch)) throw new Error(`${PSTACK_CONFIG_FILE}: project.defaultBranch ${JSON.stringify(branch)} is not a branch name`);
+}
+
+/**
+ * Render the template repository's own copies of the `source` entries (its
+ * workflows) from its own pstack.config.json, so its CI runs on its default
+ * branch. Returns [{path, current}] for each copy; writes stale ones unless check.
+ */
+export function renderSelf({ templateRoot = TEMPLATE_ROOT, check = false } = {}) {
+  const config = JSON.parse(readFileSync(path.join(templateRoot, PSTACK_CONFIG_FILE), "utf8"));
+  checkDefaultBranch(config);
+  const results = [];
+  for (const entry of MANIFEST.filter((item) => item.source)) {
+    const next = fillPlaceholders(readFileSync(path.join(templateRoot, entry.source), "utf8"), config);
+    const destination = path.join(templateRoot, entry.path);
+    const current = readIfExists(destination) === next;
+    results.push({ path: entry.path, current });
+    if (!check && !current) {
+      mkdirSync(path.dirname(destination), { recursive: true });
+      writeFileSync(destination, next);
+    }
+  }
+  return results;
+}
+
+const USAGE = "usage: sync-template.mjs <target-dir> [--dry-run] [--project <name>] [--owner <name>] [--add-scripts] | --render-self [--check]";
 
 export function main(argv = process.argv.slice(2), { stdout = console.log, stderr = console.error } = {}) {
+  if (argv[0] === "--render-self") {
+    const check = argv[1] === "--check";
+    if (argv.length > (check ? 2 : 1)) {
+      stderr(`sync-template: unexpected argument ${argv[check ? 2 : 1]}; ${USAGE}`);
+      return 2;
+    }
+    const results = renderSelf({ check });
+    for (const { path: file, current } of results) stdout(`${(current ? "unchanged" : check ? "stale" : "update").padEnd(9)} ${file}`);
+    const stale = results.filter((result) => !result.current);
+    if (check && stale.length) {
+      stderr(`sync-template: rendered copies are out of date; run \`npm run render-self\` after editing templates/`);
+      return 1;
+    }
+    return 0;
+  }
   const options = { dryRun: false, addScripts: false, project: null, owner: null, target: null };
   for (let k = 0; k < argv.length; k += 1) {
     const arg = argv[k];

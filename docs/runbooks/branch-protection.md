@@ -33,7 +33,7 @@ Managed by the pstack template. **Changing branch protection or repository setti
 ```bash
 REPO=<owner>/<repo>
 gh api repos/$REPO --jq '{owner_type: .owner.type, allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge}' > /tmp/repo-before.json
-gh api repos/$REPO/branches/main/protection > /tmp/protection-before.json 2>/dev/null || echo "no classic protection"
+gh api repos/$REPO/branches/{{DEFAULT_BRANCH}}/protection > /tmp/protection-before.json 2>/dev/null || echo "no classic protection"
 gh api repos/$REPO/rulesets > /tmp/rulesets-before.json
 ```
 
@@ -44,7 +44,7 @@ gh api repos/$REPO/rulesets > /tmp/rulesets-before.json
 ```bash
 REPO=<owner>/<repo>
 gh api --method PATCH repos/$REPO -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -F allow_auto_merge=true -F delete_branch_on_merge=true
-gh api --method PUT repos/$REPO/branches/main/protection --input - <<'JSON'
+gh api --method PUT repos/$REPO/branches/{{DEFAULT_BRANCH}}/protection --input - <<'JSON'
 {
   "required_status_checks": { "strict": true, "contexts": ["ci", "pr-body"] },
   "enforce_admins": false,
@@ -67,12 +67,12 @@ Set `enforce_admins` to `true` once the gates are stable. That is the "include a
 ## Verify (read-only)
 
 ```bash
-gh api repos/$REPO/branches/main/protection > /tmp/protection-after.json
+gh api repos/$REPO/branches/{{DEFAULT_BRANCH}}/protection > /tmp/protection-after.json
 diff <(jq -S . /tmp/protection-before.json) <(jq -S . /tmp/protection-after.json)
 ```
 
-Then dry-run: open a trivial docs PR and confirm that `ci` and `pr-body` report, the PR cannot merge until both pass, a PR touching `.github/workflows/` asks for the code owner's review, a second PR goes out of date after the first merges, and a force push to `main` is rejected.
+Then dry-run: open a trivial docs PR and confirm that `ci` and `pr-body` report, the PR cannot merge until both pass, a PR touching `.github/workflows/` asks for the code owner's review, a second PR goes out of date after the first merges, and a force push to `{{DEFAULT_BRANCH}}` is rejected.
 
 ## Rollback
 
-Re-apply the snapshot (`/tmp/protection-before.json`) through the same `PUT`, with owner approval, or remove protection with `gh api --method DELETE repos/$REPO/branches/main/protection` (also protected).
+Re-apply the snapshot (`/tmp/protection-before.json`) through the same `PUT`, with owner approval, or remove protection with `gh api --method DELETE repos/$REPO/branches/{{DEFAULT_BRANCH}}/protection` (also protected).

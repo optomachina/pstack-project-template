@@ -15,7 +15,8 @@
     "sensitive-paths:render": "node scripts/lib/sensitive-paths.mjs render-agents",
     "review-gate": "node scripts/review-gate.mjs",
     "journey-tests:check": "node scripts/check-journey-tests.mjs",
-    "sync-template": "node scripts/sync-template.mjs"
+    "sync-template": "node scripts/sync-template.mjs",
+    "render-self": "node scripts/sync-template.mjs --render-self"
   },
   "devDependencies": {
     "picomatch": "^4.0.2"

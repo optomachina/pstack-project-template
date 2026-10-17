@@ -14,6 +14,7 @@
 
 /.github/workflows/                 {{OWNER_HANDLE}}
 /.github/actions/                   {{OWNER_HANDLE}}
+/templates/.github/                 {{OWNER_HANDLE}}
 /.github/CODEOWNERS                 {{OWNER_HANDLE}}
 /.github/pull_request_template.md   {{OWNER_HANDLE}}
 /docs/sensitive-paths.json          {{OWNER_HANDLE}}
@@ -23,6 +24,7 @@
 /.pstack-template-version           {{OWNER_HANDLE}}
 /scripts/lib/                       {{OWNER_HANDLE}}
 /scripts/fixtures/sensitive-paths/  {{OWNER_HANDLE}}
+/scripts/fixtures/pstack-config/    {{OWNER_HANDLE}}
 /scripts/sensitive-paths*           {{OWNER_HANDLE}}
 /scripts/review-gate*               {{OWNER_HANDLE}}
 /scripts/jev-client*                {{OWNER_HANDLE}}
