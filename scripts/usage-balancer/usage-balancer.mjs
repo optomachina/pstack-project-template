@@ -18,7 +18,8 @@
  *     [--timeout-s 40] [--now ISO]
  */
 import { execFile } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REVIEW_ONLY_PERCENT = 90;
@@ -32,6 +33,7 @@ const PROBE_MIN_GAP_MS = 15 * 60_000; // at most one capacity probe per 15 minut
 export function paceFor(window, now) {
   if (!window || !Number.isFinite(window.usedPercent) || !window.resetsAt || !window.windowMinutes) return null;
   const resetMs = Date.parse(window.resetsAt);
+  if (!Number.isFinite(resetMs) || resetMs <= now) return null; // unparsable, or the window already reset (stale data)
   const lengthMs = window.windowMinutes * 60_000;
   const elapsed = Math.min(1, Math.max(0, 1 - (resetMs - now) / lengthMs));
   const target = Math.round(elapsed * 1000) / 10;
@@ -42,7 +44,7 @@ export function paceFor(window, now) {
     deltaPercent: delta, pace, hoursToReset: Math.round(((resetMs - now) / HOUR) * 10) / 10 };
 }
 
-const local = (ms) => new Date(ms).toLocaleString("en-US", { timeZone: process.env.TZ || "America/Phoenix", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+const local = (ms) => new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 /** Pick the long (budget) window and the short (5-hour) window from one CodexBar provider entry. */
 export function windowsOf(entry) {
@@ -58,7 +60,7 @@ export function poolFor(provider, entry, now) {
   if (!entry || entry.error) return { pool: provider, mode: "unavailable", reason: entry?.error?.message?.slice(0, 160) ?? "no data" };
   const { budget, short } = windowsOf(entry);
   const pace = paceFor(budget, now);
-  if (!pace) return { pool: provider, mode: "unavailable", reason: "no budget window" };
+  if (!pace) return { pool: provider, mode: "unavailable", reason: "no current budget window (missing or already reset)" };
   const shortPace = paceFor(short, now);
   let mode = "build";
   if (pace.usedPercent >= REVIEW_ONLY_PERCENT) mode = "review_only";
@@ -75,7 +77,7 @@ export function jevPool(lines, now, configured) {
   const throttled = recent.some((l) => /http_(429|529)/.test(String(l.reason ?? "")));
   const tok = (k) => week.reduce((s, l) => s + (Number(l.usage?.[k]) || 0), 0);
   const failures = recent.filter((l) => l.ok === false).length;
-  const mode = !configured && week.length === 0 ? "unavailable" : throttled ? "throttled" : "first";
+  const mode = !configured ? "unavailable" : throttled ? "throttled" : "first";
   return { pool: "jev", mode, configured, quota: "none published; rate limited (429/529)", calls7d: week.length,
     okCalls7d: week.filter((l) => l.ok !== false).length, inputTokens7d: tok("input_tokens"), outputTokens7d: tok("output_tokens"),
     failuresLastHour: failures, lastCallAt: week.map((l) => l.ts).sort().at(-1) ?? null, handles: JEV_FIRST_WORK };
@@ -87,7 +89,7 @@ export function route(pools) {
   const behindFirst = (a, b) => a.deltaPercent - b.deltaPercent;
   const builders = live.filter((p) => p.mode === "build" && !p.coolingDown).sort(behindFirst);
   const burn = live.filter((p) => p.mode === "burn_backlog").sort(behindFirst);
-  const fallback = [...burn.filter((p) => !p.coolingDown), ...live.filter((p) => p.mode === "build")].sort(behindFirst);
+  const fallback = burn.filter((p) => !p.coolingDown);
   return { newBuildPool: builders[0]?.pool ?? fallback[0]?.pool ?? null, buildOrder: builders.map((p) => p.pool),
     burnBacklogPools: burn.map((p) => p.pool), reviewOnlyPools: live.filter((p) => p.mode === "review_only").map((p) => p.pool),
     coolingDownPools: live.filter((p) => p.coolingDown).map((p) => p.pool), unavailablePools: pools.filter((p) => p.mode === "unavailable").map((p) => p.pool) };
@@ -103,7 +105,9 @@ function codexbar(provider, timeoutS, source) {
   });
 }
 
-const readJsonl = (file) => (file && existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : []);
+const readJsonl = (file) => (file && existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).flatMap((l) => {
+  try { const v = JSON.parse(l); return v && typeof v === "object" && !Array.isArray(v) && Number.isFinite(Date.parse(v.ts)) ? [v] : []; } catch { return []; }
+}) : []);
 
 function parseArgs(argv) {
   const opts = { providers: ["codex", "claude", "cursor"], codexbarJson: [], jevLog: [], jevProbe: false, sources: {}, timeoutS: 40, now: Date.now() };
@@ -128,14 +132,18 @@ export async function main(argv = process.argv.slice(2)) {
     const fromFiles = saved.filter((e) => e.provider === p && !e.error).sort((a, b) => String(b.usage?.updatedAt).localeCompare(String(a.usage?.updatedAt)))[0];
     return fromFiles ?? (opts.codexbarJson.length ? null : await codexbar(p, opts.timeoutS, opts.sources[p]));
   }));
-  const jev = await import("../jev-client.mjs");
-  const lastProbe = readJsonl(opts.jevLog[0] ?? "").filter((l) => l.kind === "usage_balancer_probe").map((l) => Date.parse(l.ts)).sort().at(-1) ?? 0;
-  if (opts.jevProbe && opts.jevLog[0] && Date.now() - lastProbe > PROBE_MIN_GAP_MS) {
-    const r = await jev.askJev({ task: "usage-balancer capacity probe" }, { alive: { type: "noul", instructions: "Is `task` a capacity probe?" } });
-    appendFileSync(opts.jevLog[0], JSON.stringify({ ts: new Date().toISOString(), kind: "usage_balancer_probe", ok: r.ok, reason: r.ok ? null : r.reason, usage: r.usage ?? null, latencyMs: r.latencyMs }) + "\n");
+  let jev = null, probeError = null;
+  try { jev = await import("../jev-client.mjs"); } catch { probeError = "jev_client_unavailable"; }
+  const lastProbe = Math.max(0, ...readJsonl(opts.jevLog[0]).filter((l) => l.kind === "usage_balancer_probe").map((l) => Date.parse(l.ts)));
+  if (jev && opts.jevProbe && opts.jevLog[0] && opts.now - lastProbe > PROBE_MIN_GAP_MS) {
+    try {
+      const r = await jev.askJev({ task: "usage-balancer capacity probe" }, { alive: { type: "noul", instructions: "Is `task` a capacity probe?" } });
+      mkdirSync(dirname(opts.jevLog[0]), { recursive: true });
+      appendFileSync(opts.jevLog[0], JSON.stringify({ ts: new Date(opts.now).toISOString(), kind: "usage_balancer_probe", ok: r.ok, reason: r.ok ? null : r.reason, usage: r.usage ?? null, latencyMs: r.latencyMs }) + "\n");
+    } catch (error) { probeError = `probe_failed_${error?.code ?? "error"}`; }
   }
   const pools = opts.providers.map((p, i) => poolFor(p, entries[i], opts.now));
-  const jevRow = jevPool(opts.jevLog.flatMap(readJsonl), opts.now, jev.isJevConfigured());
+  const jevRow = { ...jevPool(opts.jevLog.flatMap(readJsonl), opts.now, jev?.isJevConfigured() ?? false), probeError };
   const report = { generatedAt: new Date(opts.now).toISOString(), jev: jevRow, pools, routing: { jevFirst: jevRow.mode === "first", ...route(pools) } };
   console.log(JSON.stringify(report, null, 2));
   return report;

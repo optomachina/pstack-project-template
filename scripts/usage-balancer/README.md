@@ -2,7 +2,7 @@
 
 `usage-balancer.mjs` prints one JSON report on the coding usage pools so new work lands where budget would otherwise expire unused.
 
-- **Codex, Claude, Cursor** come from [CodexBar](https://github.com/steipete/CodexBar)'s CLI (`brew install --cask codexbar`), one `codexbar usage --provider <p> --format json` call per provider with a timeout, or from saved CodexBar JSON (`--codexbar-json`). Each pool reports `usedPercent`, `resetsAt` (UTC and local), `paceTargetPercent` (elapsed share of its window), `deltaPercent` (used minus target), `pace` (`ahead`, `behind`, `on_pace` within 3 points), its routing `mode`, and the 5-hour window when the provider has one.
+- **Codex, Claude, Cursor** come from [CodexBar](https://github.com/steipete/CodexBar)'s CLI (`brew install --cask codexbar`), one `codexbar usage --provider <p> --format json` call per provider with a timeout, or from saved CodexBar JSON (`--codexbar-json`). Each pool reports `usedPercent`, `resetsAt` (UTC, and local in the system time zone), `paceTargetPercent` (elapsed share of its window), `deltaPercent` (used minus target), `pace` (`ahead`, `behind`, `on_pace` within 3 points), its routing `mode`, and the 5-hour window when the provider has one.
 - **Jev** (TypeSafe System One) has no published quota or reset; it is rate limited (429/529). Its pool is tracked from JSONL call ledgers (`--jev-log`, lines with `ts`, `ok`, `reason`, `usage`): calls and tokens over 7 days and throttling in the last hour. `--jev-probe` makes one synthetic call through `../jev-client.mjs` (configured by `JEV_ENDPOINT`, optional `JEV_API_KEY`, `JEV_MODEL`) at most every 15 minutes and appends it to the first ledger.
 
 The script reads no credentials itself and prints none; CodexBar and `jev-client.mjs` own them.
@@ -19,4 +19,4 @@ node scripts/usage-balancer/usage-balancer.mjs --source claude=web \
 3. **Burn before reset.** A pool within 24 hours of its reset with budget left (`burn_backlog`) gets backlog work that is fine to burn: refactors, tests, docs, cleanup, speculative spikes.
 4. **Review only at 90%.** A pool at or above 90% of its weekly budget (`review_only`) takes only reviews and small verifications until it resets. This takes precedence over rule 3.
 5. **Cool down.** A pool whose 5-hour window is at or above 90% (`coolingDown`) takes no new builds until that window resets.
-6. A pool with no data (`unavailable`) is skipped, not assumed empty.
+6. A pool with no data, or whose window already reset in a stale snapshot (`unavailable`), is skipped, not assumed empty. Jev is `unavailable` on a host without `JEV_ENDPOINT`.

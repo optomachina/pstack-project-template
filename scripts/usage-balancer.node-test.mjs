@@ -13,6 +13,8 @@ test("pace target is the elapsed share of the window", () => {
   assert.equal(pace.pace, "ahead");
   assert.equal(paceFor({ usedPercent: 0, resetsAt: "2026-11-01T00:00:00Z", windowMinutes: 44640 }, now).pace, "behind");
   assert.equal(paceFor(null, now), null);
+  assert.equal(paceFor({ usedPercent: 5, resetsAt: "2026-10-16T00:00:00Z", windowMinutes: week }, now), null, "already reset");
+  assert.equal(paceFor({ usedPercent: 5, resetsAt: "soon", windowMinutes: week }, now), null, "unparsable");
 });
 
 test("modes: >= 90% is review only, then burn within 24h, else build", () => {
@@ -40,6 +42,14 @@ test("new builds go to the build pool furthest behind pace", () => {
   assert.deepEqual(r.burnBacklogPools, ["burner"]);
 });
 
+test("a cooling-down pool never gets new builds, even as the fallback", () => {
+  const short = { usedPercent: 95, resetsAt: "2026-10-17T04:00:00Z", windowMinutes: 300 };
+  const cooling = poolFor("claude", entry(10, "2026-10-20T20:00:00Z", { primary: short }), now);
+  assert.equal(route([cooling]).newBuildPool, null);
+  const burner = poolFor("burner", entry(50, "2026-10-17T20:00:00Z"), now);
+  assert.equal(route([cooling, burner]).newBuildPool, "burner");
+});
+
 test("jev pool counts calls and flags recent throttling", () => {
   const lines = [{ ts: "2026-10-16T00:00:00Z", ok: true, usage: { input_tokens: 10, output_tokens: 2 } }, { ts: "2026-10-17T02:30:00Z", ok: false, reason: "http_429" }];
   const jev = jevPool(lines, now, true);
@@ -47,5 +57,6 @@ test("jev pool counts calls and flags recent throttling", () => {
   assert.equal(jev.inputTokens7d, 10);
   assert.equal(jev.mode, "throttled");
   assert.equal(jevPool([], now, false).mode, "unavailable");
+  assert.equal(jevPool(lines.slice(0, 1), now, false).mode, "unavailable", "history without config cannot be called");
   assert.equal(jevPool([], now, true).mode, "first");
 });
