@@ -7,9 +7,23 @@ name: CI
 #   agent-contract  AGENTS.md vs docs/sensitive-paths.json parity and required rules.
 #   pr-gates        pull_request only: sensitive-paths report (report only),
 #                   review gate (tier + auto-merge eligibility, report only) and
-#                   the journey-test rule (enforced). These run the BASE copy of
-#                   the gate scripts and configs, so a PR cannot edit its own gate.
+#                   the journey-test rule (enforced).
 #   ci              aggregate job; make "ci" the required check.
+#
+# What a PR can and cannot change about its own gate:
+# - The gate scripts run from the BASE copy ("Prepare gate from base"), and
+#   they read docs/sensitive-paths.json and pstack.config.json from the base
+#   (--base-ref HEAD^1, via git show), so editing either in the PR does not
+#   change how the PR itself is classified or checked. The head copies are used
+#   only when the base lacks a gate file (the PR that adds the gate, or one that
+#   adds a new gate script); the report then says "from head".
+# - This workflow file itself runs from the PR (pull_request uses the merge
+#   ref), so a PR can edit or drop these steps. That is closed only by
+#   .github/CODEOWNERS owning .github/workflows/** and the gate files, plus
+#   branch protection with "Require review from Code Owners"
+#   (docs/runbooks/branch-protection.md). Without both, the gate is advisory.
+#   Do not switch to pull_request_target to work around it: that runs with
+#   secrets and a write token next to PR-controlled files.
 #
 # The journey-test step reads the PR body through the API when it runs. After
 # adding a "Journey test: N/A - <reason>" line, re-run the failed jobs
@@ -24,13 +38,14 @@ on:
   merge_group:
     types: [checks_requested]
 
+# Superseded PR runs are cancelled; push and merge_group runs are not, so every
+# commit to main keeps a result.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   preflight:
@@ -86,6 +101,10 @@ jobs:
     name: pr-gates
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Journey tests read the fresh PR body through the API.
+    permissions:
+      contents: read
+      pull-requests: read
     # No job-level if: a skipped job never reports success to a required check.
     steps:
       - name: Not a pull request
@@ -107,7 +126,11 @@ jobs:
         with:
           node-version: 22
 
-      # The gate scripts are dependency-free, so the base copy runs without an install.
+      # The gate scripts are dependency-free and import only each other and node
+      # built-ins, so the base copy runs from $RUNNER_TEMP without an install. A
+      # gate script that imports another repo file must be added to this list
+      # (and to pr-body-gate.yml). scripts/gate-workflows.node-test.mjs runs
+      # this step against a PR that edits the configs and scripts.
       - name: Prepare gate from base
         if: github.event_name == 'pull_request'
         run: |
@@ -122,7 +145,7 @@ jobs:
             mkdir -p "$gate/$(dirname "$file")"
             if [ "$source" = base ]; then git show "HEAD^1:$file" > "$gate/$file"; else cp "$file" "$gate/$file"; fi
           done
-          echo "Gate scripts taken from: $source"
+          echo "Gate scripts taken from: $source (configs are read from HEAD^1 by the scripts)"
           git diff --name-status -z --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.z"
           git diff --numstat --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/numstat.txt"
 
@@ -136,7 +159,9 @@ jobs:
 
       # Jev is optional: set the JEV_ENDPOINT (and JEV_API_KEY) repository
       # secrets to enable it. Without them, or on fork PRs, the client is inert
-      # and low-risk PRs get Sonnet review instead of Jev-only.
+      # and low-risk PRs get Sonnet review instead of Jev-only. review-gate.mjs
+      # exits 0 for every tier outcome and Jev failure; a nonzero exit (bad
+      # input) is a warning here, never a failed check.
       - name: Review gate (report only)
         if: github.event_name == 'pull_request'
         env:
@@ -147,7 +172,8 @@ jobs:
           set -uo pipefail
           node "$RUNNER_TEMP/gate/scripts/review-gate.mjs" --root . --base-ref HEAD^1 \
             --changed-files-from "$RUNNER_TEMP/changed.z" --numstat-from "$RUNNER_TEMP/numstat.txt" \
-            --title "$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json" | tee "$RUNNER_TEMP/review.txt"
+            --title="$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json" | tee "$RUNNER_TEMP/review.txt" \
+            || echo "::warning title=Review gate::review gate exited non-zero (report mode, not failing)"
           { echo '### Review gate'; echo '```'; cat "$RUNNER_TEMP/review.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Journey tests
@@ -176,6 +202,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr-gate-reports
+          overwrite: true
           path: |
             ${{ runner.temp }}/sensitive-paths-report.json
             ${{ runner.temp }}/review-gate.json

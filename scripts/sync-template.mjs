@@ -15,9 +15,10 @@
  *   union    docs/sensitive-paths.json: the template's classes and globs are
  *            added when missing; nothing in the target is removed or
  *            reclassified (adding is free, removing loosens the gate).
- * After copying, the PROJECT, OWNER and DEFAULT_BRANCH placeholders in Markdown
- * and workflow files are filled from the target's pstack.config.json (when it
- * has real values), the AGENTS.md
+ * After copying, the PROJECT, OWNER and DEFAULT_BRANCH placeholders in Markdown,
+ * workflow and CODEOWNERS files are filled from the target's pstack.config.json
+ * (when it has real values), OWNER_HANDLE from project.ownerHandle (default
+ * DEFAULT_OWNER_HANDLE), the AGENTS.md
  * sensitive-paths block is regenerated from the target's list, and
  * .pstack-template-version records the template version, commit and file hashes.
  *
@@ -39,7 +40,9 @@ export const VERSION_FILE = ".pstack-template-version";
 export const PROJECT_BEGIN = /<!-- project:begin(?:\s+([\w.-]+))?\s*-->/;
 export const PROJECT_END = /<!-- project:end(?:\s+([\w.-]+))?\s*-->/;
 /** Files whose project blocks are kept and whose placeholders are filled; everything else is copied verbatim. */
-const PROSE = /\.(?:md|ya?ml)$/;
+const PROSE = /(?:\.(?:md|ya?ml)|(?:^|\/)CODEOWNERS)$/;
+/** Code owner of the gate files when pstack.config.json has no project.ownerHandle. */
+export const DEFAULT_OWNER_HANDLE = "@optomachina";
 
 // The sync script itself stays in the template: run it from here against a target.
 export const MANIFEST = Object.freeze([
@@ -56,6 +59,7 @@ export const MANIFEST = Object.freeze([
   { path: ".github/workflows/ci.yml", mode: "managed" },
   { path: ".github/workflows/pr-body-gate.yml", mode: "managed" },
   { path: ".github/pull_request_template.md", mode: "managed" },
+  { path: ".github/CODEOWNERS", mode: "managed" },
   { path: "scripts/preflight.sh", mode: "managed" },
   { path: "scripts/preflight.node-test.mjs", mode: "managed" },
   { path: "scripts/lib/sensitive-paths.mjs", mode: "managed" },
@@ -73,6 +77,7 @@ export const MANIFEST = Object.freeze([
   { path: "scripts/check-journey-tests.node-test.mjs", mode: "managed" },
   { path: "scripts/check-pr-body.mjs", mode: "managed" },
   { path: "scripts/check-pr-body.node-test.mjs", mode: "managed" },
+  { path: "scripts/gate-workflows.node-test.mjs", mode: "managed" },
 ]);
 
 /** npm scripts --add-scripts adds when the target lacks them. */
@@ -162,13 +167,15 @@ export function unionSensitivePaths(templateText, targetText) {
   return { text: added.length ? `${JSON.stringify(target, null, 2)}\n` : targetText, added };
 }
 
-/** Fill {{PROJECT}}, {{OWNER}}, {{DEFAULT_BRANCH}} from a config whose values are real (not placeholders). */
+/**
+ * Fill {{PROJECT}}, {{OWNER}}, {{DEFAULT_BRANCH}} and {{OWNER_HANDLE}} from a config whose values are
+ * real (not placeholders). OWNER_HANDLE falls back to DEFAULT_OWNER_HANDLE so CODEOWNERS always names an owner.
+ */
 export function fillPlaceholders(text, config) {
+  const real = (value) => typeof value === "string" && value.trim() !== "" && !/\{\{/.test(value);
   const values = { PROJECT: config?.project?.name, OWNER: config?.project?.owner, DEFAULT_BRANCH: config?.project?.defaultBranch };
-  return text.replaceAll(/\{\{(PROJECT|OWNER|DEFAULT_BRANCH)\}\}/g, (whole, key) => {
-    const value = values[key];
-    return typeof value === "string" && value.trim() !== "" && !/\{\{/.test(value) ? value : whole;
-  });
+  values.OWNER_HANDLE = real(config?.project?.ownerHandle) ? config.project.ownerHandle : DEFAULT_OWNER_HANDLE;
+  return text.replaceAll(/\{\{(PROJECT|OWNER|DEFAULT_BRANCH|OWNER_HANDLE)\}\}/g, (whole, key) => (real(values[key]) ? values[key] : whole));
 }
 
 function templateCommit(root) {
@@ -242,7 +249,7 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
   const sensitive = parseSensitivePaths(outputs.get("docs/sensitive-paths.json").next);
   for (const output of outputs.values()) {
     if (output.entry.mode !== "managed") continue;
-    // Only prose and workflow files: scripts and tests mention the placeholders literally.
+    // Only prose, workflow and CODEOWNERS files: scripts and tests mention the placeholders literally.
     if (PROSE.test(output.entry.path)) output.next = fillPlaceholders(output.next, config);
     if (output.entry.path === "AGENTS.md") output.next = replaceAgentsSensitiveBlock(output.next, sensitive);
   }

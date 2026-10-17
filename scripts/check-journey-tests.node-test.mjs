@@ -124,3 +124,13 @@ describe("journey-test CLI", () => {
     assert.equal(proc.status, 2);
   });
 });
+
+describe("pstack config", () => {
+  it("accepts an @user or @org/team ownerHandle, or the placeholder, and rejects anything else", () => {
+    const withHandle = (ownerHandle) => parsePstackConfig({ ...JSON.parse(configText), project: { ...config.project, ownerHandle } });
+    assert.equal(withHandle("@optomachina").project.ownerHandle, "@optomachina");
+    assert.equal(withHandle("@acme/platform").project.ownerHandle, "@acme/platform");
+    assert.equal(withHandle("{{OWNER_HANDLE}}").project.ownerHandle, "{{OWNER_HANDLE}}");
+    for (const bad of ["optomachina", "@", "@a b", 7]) assert.throws(() => withHandle(bad), /ownerHandle/);
+  });
+});

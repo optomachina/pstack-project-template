@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { askJev, gatedChoice, isJevConfigured, jevConfig, NOT_CONFIGURED, sanitizeToken } from "./jev-client.mjs";
 import { parsePstackConfig } from "./lib/pstack-config.mjs";
 import { SENSITIVE_PATHS_FILE, loadSensitivePaths } from "./lib/sensitive-paths.mjs";
-import { categorize, countChangedLines, decide, finalTier, main, runReviewGate, SCREEN_QUESTIONS } from "./review-gate.mjs";
+import { categorize, countChangedLines, decide, finalTier, main, parseArgs, runReviewGate, SCREEN_QUESTIONS } from "./review-gate.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const sensitivePaths = loadSensitivePaths({ root: repoRoot });
@@ -200,6 +200,17 @@ describe("CLI and base ref", () => {
     const bad = JSON.parse(readFileSync(join(dir, "bad.json"), "utf8"));
     assert.equal(bad.review_tier, "opus");
     assert.equal(bad.auto_merge.eligible, false);
+  });
+
+  it("takes --flag=value, so a title starting with a dash is not read as an option", () => {
+    const options = parseArgs(["--title=-x: tidy --no-jev", "--base-ref=HEAD^1", "docs/a.md"]);
+    assert.equal(options.title, "-x: tidy --no-jev");
+    assert.equal(options.baseRef, "HEAD^1");
+    assert.equal(options.useJev, true);
+    assert.deepEqual(options.paths, ["docs/a.md"]);
+    assert.equal(parseArgs(["--title="]).title, "");
+    assert.throws(() => parseArgs(["--base-ref="]), /needs a value/);
+    assert.throws(() => parseArgs(["--bogus=1"]), /unknown option/);
   });
 
   it("returns 2 on usage errors and runs as a process", async () => {

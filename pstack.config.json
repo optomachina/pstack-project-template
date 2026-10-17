@@ -3,6 +3,7 @@
   "project": {
     "name": "{{PROJECT}}",
     "owner": "{{OWNER}}",
+    "ownerHandle": "{{OWNER_HANDLE}}",
     "defaultBranch": "main"
   },
   "preflight": {

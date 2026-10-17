@@ -7,9 +7,15 @@ name: PR body gate
 # Checks the PR body against .github/pull_request_template.md
 # (scripts/check-pr-body.mjs): preflight stage lines, journey test line,
 # review tier and sensitive classes. A sensitive PR must declare
-# "Review tier: opus" and list every class the base copy of the review gate
-# finds. Make "pr-body" a required check. Runs on merge_group with a no-op pass
-# so a required check never stalls a merge queue.
+# "Review tier: opus" and list every class the review gate finds. Make
+# "pr-body" a required check. Runs on merge_group with a no-op pass so a
+# required check never stalls a merge queue.
+#
+# The gate scripts run from the base copy and read docs/sensitive-paths.json
+# and pstack.config.json from the base (--base-ref HEAD^1), so a PR cannot
+# declassify its own files by editing them. This workflow file itself runs from
+# the PR, so it is protected only by .github/CODEOWNERS plus branch protection
+# with "Require review from Code Owners" (see the header of ci.yml).
 
 on:
   pull_request:
@@ -19,11 +25,11 @@ on:
 
 concurrency:
   group: pr-body-gate-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The body and title come from the event payload; no API access is needed.
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   pr-body:
@@ -48,7 +54,8 @@ jobs:
         with:
           node-version: 22
 
-      # Base copy of the gate scripts, as in ci.yml; head copy only for the PR that adds them.
+      # Base copy of the gate scripts, as in ci.yml (same file-list rule); head
+      # copy only when the base lacks one of them.
       - name: Prepare gate from base
         if: github.event_name == 'pull_request'
         run: |
@@ -63,26 +70,39 @@ jobs:
             mkdir -p "$gate/$(dirname "$file")"
             if [ "$source" = base ]; then git show "HEAD^1:$file" > "$gate/$file"; else cp "$file" "$gate/$file"; fi
           done
-          echo "Gate scripts taken from: $source"
+          echo "Gate scripts taken from: $source (configs are read from HEAD^1 by the scripts)"
           git diff --name-status -z --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.z"
+          git diff --numstat --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/numstat.txt"
+
+      - name: Write PR body
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
 
       - name: Validate PR body
         if: github.event_name == 'pull_request'
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
-          # Deterministic tier only (no Jev): enough to know whether the PR is sensitive.
+          # Deterministic tier only (no Jev): enough to know whether the PR is
+          # sensitive. Same inputs as ci.yml otherwise, so the tiers agree.
           node "$RUNNER_TEMP/gate/scripts/review-gate.mjs" --root . --base-ref HEAD^1 --no-jev \
-            --changed-files-from "$RUNNER_TEMP/changed.z" --json-out "$RUNNER_TEMP/review-gate.json"
-          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+            --changed-files-from "$RUNNER_TEMP/changed.z" --numstat-from "$RUNNER_TEMP/numstat.txt" \
+            --title="$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json"
           node "$RUNNER_TEMP/gate/scripts/check-pr-body.mjs" --body-file "$RUNNER_TEMP/pr-body.md" \
             --review-gate-json "$RUNNER_TEMP/review-gate.json"
 
-      # Fast feedback on the journey rule after a body edit (the enforcing run is in ci.yml).
+      # Fast feedback on the journey rule after a body edit (the enforcing run is
+      # in ci.yml). Runs when the body check failed too: that is when it helps most.
       - name: Journey tests (report)
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         run: |
+          if [ ! -f "$RUNNER_TEMP/changed.z" ] || [ ! -f "$RUNNER_TEMP/pr-body.md" ]; then
+            echo "::warning title=Journey tests::not run (gate preparation or body step failed)"
+            exit 0
+          fi
           node "$RUNNER_TEMP/gate/scripts/check-journey-tests.mjs" --root . --base-ref HEAD^1 \
             --changed-files-from "$RUNNER_TEMP/changed.z" --body-file "$RUNNER_TEMP/pr-body.md" \
             || echo "::warning title=Journey tests::journey rule not met; ci.yml enforces it (re-run its failed jobs after fixing the body)"

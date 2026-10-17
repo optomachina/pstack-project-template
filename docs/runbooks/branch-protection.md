@@ -9,7 +9,7 @@ Managed by the pstack template. **Changing branch protection or repository setti
 | Require a pull request before merging | **on** | All changes go through the gates |
 | Required approvals | **1**, or 0 with a bot gate | 1 human approval for non-auto-merge PRs; an auto-merge bot satisfies it for eligible low-risk PRs. If you use 0, the `ci` + `pr-body` checks and the auto-merge eligibility are the gate |
 | Dismiss stale approvals when new commits are pushed | **on** | An approval is for a SHA |
-| Require review from code owners | optional | Turn on with a `.github/CODEOWNERS` covering the gate files (everything in the `infra_ci` class) |
+| Require review from code owners | **on** | Required for the gate to hold. A `pull_request` workflow runs the PR's own copy of `ci.yml` and `pr-body-gate.yml`, so a PR could otherwise rewrite or drop its own gate. `.github/CODEOWNERS` owns the workflows, gate scripts and configs; this setting makes the owner's approval mandatory for any PR that touches them. A code owner cannot approve their own PR, so PRs authored by the owner need another code owner or an admin merge |
 | Require status checks to pass | **on**: `ci`, `pr-body` | Check names are the job `name`s, not `Workflow / job` |
 | Require branches to be up to date before merging (strict) | **on** | Without it a PR can merge green against a stale base |
 | Require conversation resolution | **on** | Open review threads block merge |
@@ -50,7 +50,7 @@ gh api --method PUT repos/$REPO/branches/main/protection --input - <<'JSON'
   "enforce_admins": false,
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": false,
+    "require_code_owner_reviews": true,
     "required_approving_review_count": 1
   },
   "restrictions": null,
@@ -71,7 +71,7 @@ gh api repos/$REPO/branches/main/protection > /tmp/protection-after.json
 diff <(jq -S . /tmp/protection-before.json) <(jq -S . /tmp/protection-after.json)
 ```
 
-Then dry-run: open a trivial docs PR and confirm that `ci` and `pr-body` report, the PR cannot merge until both pass, a second PR goes out of date after the first merges, and a force push to `main` is rejected.
+Then dry-run: open a trivial docs PR and confirm that `ci` and `pr-body` report, the PR cannot merge until both pass, a PR touching `.github/workflows/` asks for the code owner's review, a second PR goes out of date after the first merges, and a force push to `main` is rejected.
 
 ## Rollback
 

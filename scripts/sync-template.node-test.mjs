@@ -6,7 +6,7 @@ import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { checkAgentsParity, parseSensitivePaths } from "./lib/sensitive-paths.mjs";
-import { MANIFEST, PSTACK_SCRIPTS, VERSION_FILE, fillPlaceholders, main, mergeProjectBlocks, parseProjectBlocks, syncTemplate, unionSensitivePaths } from "./sync-template.mjs";
+import { DEFAULT_OWNER_HANDLE, MANIFEST, PSTACK_SCRIPTS, VERSION_FILE, fillPlaceholders, main, mergeProjectBlocks, parseProjectBlocks, syncTemplate, unionSensitivePaths } from "./sync-template.mjs";
 import { validateAgentContract } from "./validate-agent-contract.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -72,6 +72,9 @@ describe("sensitive list union and placeholders", () => {
     assert.equal(fillPlaceholders("{{PROJECT}} by {{OWNER}} on {{DEFAULT_BRANCH}}", { project: { name: "Acme", owner: "Dana", defaultBranch: "trunk" } }), "Acme by Dana on trunk");
     assert.equal(fillPlaceholders("{{PROJECT}}", { project: { name: "{{PROJECT}}" } }), "{{PROJECT}}");
     assert.equal(fillPlaceholders("{{OTHER}}", { project: { name: "Acme" } }), "{{OTHER}}");
+    assert.equal(fillPlaceholders("{{OWNER_HANDLE}}", { project: { ownerHandle: "@acme/platform" } }), "@acme/platform");
+    assert.equal(fillPlaceholders("{{OWNER_HANDLE}}", { project: { ownerHandle: "{{OWNER_HANDLE}}" } }), DEFAULT_OWNER_HANDLE);
+    assert.equal(fillPlaceholders("{{OWNER_HANDLE}}", {}), "@optomachina");
   });
 });
 
@@ -84,6 +87,9 @@ describe("syncTemplate", () => {
     const agents = read(target, "AGENTS.md");
     assert.match(agents, /^# Acme agent contract/);
     assert.ok(!agents.includes("{{"), "placeholders filled");
+    const codeowners = read(target, ".github/CODEOWNERS");
+    assert.match(codeowners, /^\/\.github\/workflows\/\s+@optomachina$/m, "default code owner");
+    assert.ok(!codeowners.includes("{{"));
     assert.deepEqual(validateAgentContract(target), []);
     const pkg = JSON.parse(read(target, "package.json"));
     assert.equal(pkg.scripts.test, "vitest run", "existing scripts are kept");
@@ -120,6 +126,22 @@ describe("syncTemplate", () => {
     assert.match(agents, /`\*\*\/customer-exports\/\*\*`/, "AGENTS.md list regenerated from the project's list");
     assert.deepEqual(checkAgentsParity(agents, parseSensitivePaths(read(target, "docs/sensitive-paths.json"))), []);
     assert.deepEqual(JSON.parse(read(target, "pstack.config.json")).journeyTests.journeyTests, ["playwright/journeys/**"]);
+    assert.deepEqual(validateAgentContract(target), []);
+  });
+
+  it("fills CODEOWNERS from project.ownerHandle and keeps its project block", () => {
+    const target = tempDir();
+    syncTemplate({ target, project: "Acme", owner: "Dana" });
+    const config = JSON.parse(read(target, "pstack.config.json"));
+    config.project.ownerHandle = "@acme/platform";
+    writeFileSync(join(target, "pstack.config.json"), `${JSON.stringify(config, null, 2)}\n`);
+    const path = join(target, ".github/CODEOWNERS");
+    writeFileSync(path, read(target, ".github/CODEOWNERS").replace("# Project-specific owners go here.", "/src/billing/ @acme/billing"));
+    syncTemplate({ target });
+    const codeowners = read(target, ".github/CODEOWNERS");
+    assert.match(codeowners, /^\/scripts\/lib\/\s+@acme\/platform$/m);
+    assert.ok(!codeowners.includes("@optomachina"));
+    assert.match(codeowners, /^\/src\/billing\/ @acme\/billing$/m);
     assert.deepEqual(validateAgentContract(target), []);
   });
 

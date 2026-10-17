@@ -8,7 +8,7 @@
     "payments": { "label": "Payments, pricing, billing", "description": "payment, billing, pricing, invoice, subscription and checkout paths" },
     "integrations": { "label": "External integrations", "description": "code that sends data to, or acts on, third-party providers, webhooks and outbound dispatch" },
     "secrets": { "label": "Secrets and env", "description": "secrets, credentials, keys, tokens, vaults and env files" },
-    "infra_ci": { "label": "Infra, CI, deploy, governance", "description": "workflows, infrastructure, containers, hosting config, deploy and release scripts, and the files that define and apply the gates (this list, AGENTS.md, pstack.config.json, the matcher, review gate, journey check, preflight and template sync)" },
+    "infra_ci": { "label": "Infra, CI, deploy, governance", "description": "workflows, infrastructure, containers, hosting config, deploy and release scripts, and the files that define and apply the gates (this list, AGENTS.md, pstack.config.json, the PR template, CODEOWNERS, the matcher, review gate, journey check, PR body check, preflight, template sync and the workflow gate test)" },
     "deps": { "label": "Dependencies", "description": "package manifests and lockfiles" }
   },
   "globs": [
@@ -52,6 +52,7 @@
     { "glob": ".github/workflows/**", "class": "infra_ci" },
     { "glob": ".github/actions/**", "class": "infra_ci" },
     { "glob": ".github/CODEOWNERS", "class": "infra_ci" },
+    { "glob": ".github/pull_request_template.md", "class": "infra_ci" },
     { "glob": "**/{infra,terraform,deploy,k8s,helm,ops}/**", "class": "infra_ci" },
     { "glob": "**/*.tf", "class": "infra_ci" },
     { "glob": "**/Dockerfile*", "class": "infra_ci" },
@@ -74,6 +75,7 @@
     { "glob": "scripts/validate-agent-contract*", "class": "infra_ci" },
     { "glob": "scripts/preflight*", "class": "infra_ci" },
     { "glob": "scripts/sync-template*", "class": "infra_ci" },
+    { "glob": "scripts/gate-workflows*", "class": "infra_ci" },
 
     { "glob": "**/package.json", "class": "deps" },
     { "glob": "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,deno.lock}", "class": "deps" },

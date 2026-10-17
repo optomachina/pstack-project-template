@@ -29,6 +29,7 @@
  *   node scripts/review-gate.mjs [--base-ref <ref>] [--changed-files-from <name-status>]
  *        [--numstat-from <numstat>] [--title <t>] [--no-jev] [--json-out <file>]
  *        [--log <jsonl>] [--root <dir>] [path ...]
+ * Every value flag also takes --flag=value (use it for --title, which may start with "-").
  * Exit codes: 0 report produced (the gate is advisory; CI decides what to do
  * with review_tier), 2 usage or input error.
  */
@@ -244,12 +245,15 @@ export function parseArgs(argv) {
   ]);
   for (let k = 0; k < argv.length; k += 1) {
     const arg = argv[k];
+    // --flag=value keeps a value that starts with "-" (a PR title, say) from reading as an option.
+    const eq = arg.startsWith("--") ? arg.indexOf("=") : -1;
+    const flag = eq === -1 ? arg : arg.slice(0, eq);
     if (arg === "--no-jev") options.useJev = false;
-    else if (valueFlags.has(arg)) {
-      const value = argv[k + 1];
-      if (value === undefined || (arg === "--base-ref" && (value === "" || value.startsWith("-")))) throw new Error(`${arg} needs a value; ${USAGE}`);
-      options[valueFlags.get(arg)] = value;
-      k += 1;
+    else if (valueFlags.has(flag)) {
+      const value = eq === -1 ? argv[k + 1] : arg.slice(eq + 1);
+      if (value === undefined || (flag === "--base-ref" && (value === "" || value.startsWith("-")))) throw new Error(`${flag} needs a value; ${USAGE}`);
+      options[valueFlags.get(flag)] = value;
+      if (eq === -1) k += 1;
     } else if (arg.startsWith("--")) throw new Error(`unknown option ${arg}; ${USAGE}`);
     else options.paths.push(arg);
   }
