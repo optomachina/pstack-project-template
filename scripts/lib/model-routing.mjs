@@ -144,7 +144,7 @@ export function resolveRouting(input) {
   if (profiles.has(request.requestedProfile)) output.requestedProfile = request.requestedProfile;
   if (new Set(catalog.entries.map(e => canonicalJSON([e.provider, e.model, e.surface, e.runtimeVersion, e.adapterVersion]))).size !== catalog.entries.length) return finish('ambiguous_catalog');
   if (new Set(policy.rules.map(x => `${x.role}:${x.risk}`)).size !== policy.rules.length) return finish('ambiguous_rules');
-  if (catalog.entries.some(e => !uniqueIds(e.mappings) || /(^|[-_.])latest($|[-_.])/i.test(e.model) ||
+  if (catalog.entries.some(e => !uniqueIds(e.mappings) || /(^|[-_.:/])latest($|[-_.:/])/i.test(e.model) ||
       e.supportedEfforts.includes('unknown') || e.mappings.some(m => !e.supportedEfforts.includes(m.emitted)) ||
       (e.parameter === null && (e.supportedEfforts.length || e.mappings.length)))) return finish('invalid_catalog_contract');
   if (policy.profiles.some(p => !entries.has(p.entryId)) ||

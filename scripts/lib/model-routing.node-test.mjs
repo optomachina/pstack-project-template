@@ -309,3 +309,44 @@ test('R1 identical prior and new producer identities are deduplicated in receipt
   assert.equal(r.status, 'planned');
   assert.equal(r.reviewPlans[0].independenceAuthors.length, 1);
 });
+
+// Repair round 2: every delimiter allowed by model identifiers bounds alias tokens.
+function setCatalogModel(f, entryIndex, model) {
+  f.catalog.entries[entryIndex].model = model;
+  if (entryIndex === 1) f.trustedContext.reviews[0].model = model;
+  return rebind(f);
+}
+const modelDelimiters = ['-', '_', '.', ':', '/'];
+for (const entryIndex of [0, 1]) {
+  for (const token of ['latest', 'LATEST', 'LaTeSt']) {
+    const aliases = new Set([token]);
+    for (const left of modelDelimiters) {
+      aliases.add(`fake${left}${token}`);
+      aliases.add(`${token}${left}fake`);
+      for (const right of modelDelimiters) aliases.add(`fake${left}${token}${right}model`);
+    }
+    for (const alias of aliases) {
+      test(`R2 entry ${entryIndex} rejects mutable alias ${alias}`, () => {
+        const f = setCatalogModel(fixture(), entryIndex, alias);
+        assert.equal(validate('catalog', f.catalog).valid, true);
+        const r = resolve(f);
+        assert.equal(r.reason, 'invalid_catalog_contract');
+        assert.equal(r.status, 'blocked');
+        assert.equal(r.selected, null);
+      });
+    }
+  }
+  for (const model of [
+    'fake-model-20261017', 'vendor/fake-model-v1.2_20261017',
+    'vendor:fake/model-1.2.3', 'fake_model:release-2026.10.17',
+    'latestish-model-v1', 'fake-latestish-20261017',
+    'vendor/notlatest-model-1', 'LATESTMODEL-v1',
+  ]) {
+    test(`R2 entry ${entryIndex} preserves pinned identifier ${model}`, () => {
+      const f = setCatalogModel(fixture(), entryIndex, model);
+      const r = resolve(f);
+      assert.equal(r.status, 'planned');
+      assert.equal(entryIndex === 0 ? r.selected.model : r.reviewPlans[0].selection.model, model);
+    });
+  }
+}

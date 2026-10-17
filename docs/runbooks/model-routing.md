@@ -89,6 +89,12 @@ entitlement evidence. The evidence scope is the catalog entry ID and its digest
 covers the complete exact provider/model/family/surface/runtime/adapter record.
 All three records must agree on execution ID. Main execution must match the trusted
 execution identity; review execution must meet its independence predicates.
+A case-insensitive `latest` token is rejected at the start/end or beside any
+allowed model-identifier delimiter (`-`, `_`, `.`, `:`, `/`), including mixed
+delimiters in the middle. Embedded substrings such as `latestish` are not alias
+tokens. This lexical guard supplements trusted catalog provenance; accepting a
+name alone does not establish that a vendor's identifier is immutable.
+
 The catalog key is provider/model/surface/runtimeVersion/adapterVersion. Changing
 any record requires fresh evidence/content bindings, not a compatibility guess.
 
@@ -185,6 +191,11 @@ identity and a valid existing-artifact reviewer job. Removing the planned produc
 or existing contributors from independence checks must turn those regressions red;
 blanket treatment of the current reviewer as an existing-artifact author must also
 fail the positive cases. The original head's passing tests did not cover this defect.
+
+Repair round 2 covers `latest` tokens across every allowed delimiter, at either
+end or in the middle, for both main and review entries and mixed letter case.
+Pinned identifiers and non-token substrings remain accepted. Reinstating the old
+incomplete delimiter check must make these alias regressions fail.
 
 Temporary guard-removal checks must make negative tests fail, followed by exact
 source restoration and a passing rerun. Independent QA and named-provider review
