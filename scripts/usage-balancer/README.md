@@ -14,7 +14,7 @@ node scripts/usage-balancer/usage-balancer.mjs --source claude=web \
 
 ## Routing rule
 
-1. **Jev first.** Send screening, triage, duplicate checks, risk and review screens, and accept/reject or rubric scoring of small fixes and drafts to Jev before any LLM pool, whenever the Jev pool is `first`. Jev only decides (choice, score, yes/no); it never writes code or text, so the generating step of a small fix or draft goes to the pool picked below, and Jev screens the result. Log every Jev call to the ledger. When Jev is `throttled` or `unavailable`, or its answer is below the confidence floor, fall back to the pool's reviewer.
+1. **Jev first.** Send screening, triage, duplicate checks, risk and review screens, and accept/reject or rubric scoring of small fixes and drafts to Jev before any LLM pool, whenever the Jev pool is `first`. Jev only decides (choice, score, yes/no); it never writes code or text, so the generating step of a small fix or draft goes to the pool picked below, and Jev screens the result. Log every Jev call to the ledger. When Jev is `throttled`, `failing` (its latest call this hour failed) or `unavailable`, or its answer is below the confidence floor, fall back to the pool's reviewer.
 2. **New builds** go to the pool in `build` mode, not cooling down, that is furthest behind pace (most negative `deltaPercent`). With none, use the furthest-behind `burn_backlog` pool.
 3. **Burn before reset.** A pool within 24 hours of its reset with budget left (`burn_backlog`) gets backlog work that is fine to burn: refactors, tests, docs, cleanup, speculative spikes.
 4. **Review only at 90%.** A pool at or above 90% of its weekly budget (`review_only`) takes only reviews and small verifications until it resets. This takes precedence over rule 3.

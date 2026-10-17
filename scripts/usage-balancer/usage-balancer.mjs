@@ -47,9 +47,9 @@ export function paceFor(window, now) {
 const local = (ms) => new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 /** Pick the long (budget) window and the short (5-hour) window from one CodexBar provider entry. */
-export function windowsOf(entry) {
+export function windowsOf(entry, now = Date.now()) {
   const u = entry?.usage ?? {};
-  const all = [u.primary, u.secondary, u.tertiary].filter((w) => w && Number.isFinite(w.windowMinutes));
+  const all = [u.primary, u.secondary, u.tertiary].filter((w) => w && Number.isFinite(w.windowMinutes) && paceFor(w, now));
   const budget = all.filter((w) => w.windowMinutes >= 7 * 24 * 60).sort((a, b) => a.windowMinutes - b.windowMinutes)[0] ?? null;
   const short = all.find((w) => w.windowMinutes <= 300) ?? null;
   return { budget, short };
@@ -58,7 +58,7 @@ export function windowsOf(entry) {
 /** One pool row: pace plus the routing mode (unavailable, review_only, burn_backlog, build). */
 export function poolFor(provider, entry, now) {
   if (!entry || entry.error) return { pool: provider, mode: "unavailable", reason: entry?.error?.message?.slice(0, 160) ?? "no data" };
-  const { budget, short } = windowsOf(entry);
+  const { budget, short } = windowsOf(entry, now);
   const pace = paceFor(budget, now);
   if (!pace) return { pool: provider, mode: "unavailable", reason: "no current budget window (missing or already reset)" };
   const shortPace = paceFor(short, now);
@@ -72,12 +72,14 @@ export function poolFor(provider, entry, now) {
 
 /** Jev capacity from ledger lines: calls, tokens and throttling over the last 7 days. */
 export function jevPool(lines, now, configured) {
-  const week = lines.filter((l) => Date.parse(l.ts) > now - 7 * 24 * HOUR);
+  const week = lines.filter((l) => Date.parse(l.ts) > now - 7 * 24 * HOUR && Date.parse(l.ts) <= now);
   const recent = week.filter((l) => Date.parse(l.ts) > now - HOUR);
   const throttled = recent.some((l) => /http_(429|529)/.test(String(l.reason ?? "")));
   const tok = (k) => week.reduce((s, l) => s + (Number(l.usage?.[k]) || 0), 0);
   const failures = recent.filter((l) => l.ok === false).length;
-  const mode = !configured ? "unavailable" : throttled ? "throttled" : "first";
+  const last = [...recent].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).at(-1);
+  const failing = last?.ok === false && !throttled; // e.g. http_401 or a timeout on the latest call this hour
+  const mode = !configured ? "unavailable" : throttled ? "throttled" : failing ? "failing" : "first";
   return { pool: "jev", mode, configured, quota: "none published; rate limited (429/529)", calls7d: week.length,
     okCalls7d: week.filter((l) => l.ok !== false).length, inputTokens7d: tok("input_tokens"), outputTokens7d: tok("output_tokens"),
     failuresLastHour: failures, lastCallAt: week.map((l) => l.ts).sort().at(-1) ?? null, handles: JEV_FIRST_WORK };
@@ -135,6 +137,8 @@ export async function main(argv = process.argv.slice(2)) {
   let jev = null, probeError = null;
   try { jev = await import("../jev-client.mjs"); } catch { probeError = "jev_client_unavailable"; }
   const lastProbe = Math.max(0, ...readJsonl(opts.jevLog[0]).filter((l) => l.kind === "usage_balancer_probe").map((l) => Date.parse(l.ts)));
+  if (opts.jevProbe && !opts.jevLog[0]) probeError = "probe_needs_jev_log";
+  else if (opts.jevProbe && opts.now - lastProbe <= PROBE_MIN_GAP_MS) probeError = "probe_skipped_recent";
   if (jev && opts.jevProbe && opts.jevLog[0] && opts.now - lastProbe > PROBE_MIN_GAP_MS) {
     try {
       const r = await jev.askJev({ task: "usage-balancer capacity probe" }, { alive: { type: "noul", instructions: "Is `task` a capacity probe?" } });

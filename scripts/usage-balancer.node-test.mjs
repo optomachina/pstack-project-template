@@ -27,6 +27,8 @@ test("modes: >= 90% is review only, then burn within 24h, else build", () => {
 test("a 5-hour window at 90% or more cools the pool down", () => {
   const short = { usedPercent: 95, resetsAt: "2026-10-17T04:00:00Z", windowMinutes: 300 };
   assert.equal(poolFor("claude", entry(40, "2026-10-20T20:00:00Z", { primary: short }), now).coolingDown, true);
+  const expired = { usedPercent: 10, resetsAt: "2026-10-17T01:00:00Z", windowMinutes: 300 };
+  assert.equal(poolFor("claude", entry(40, "2026-10-20T20:00:00Z", { primary: expired, tertiary: short }), now).coolingDown, true, "skips an expired short window");
 });
 
 test("new builds go to the build pool furthest behind pace", () => {
@@ -59,4 +61,6 @@ test("jev pool counts calls and flags recent throttling", () => {
   assert.equal(jevPool([], now, false).mode, "unavailable");
   assert.equal(jevPool(lines.slice(0, 1), now, false).mode, "unavailable", "history without config cannot be called");
   assert.equal(jevPool([], now, true).mode, "first");
+  assert.equal(jevPool([{ ts: "2026-10-17T02:35:00Z", ok: false, reason: "http_401" }], now, true).mode, "failing");
+  assert.equal(jevPool([{ ts: "2026-10-18T00:00:00Z", ok: false, reason: "http_429" }], now, true).mode, "first", "ignores future lines");
 });
