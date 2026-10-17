@@ -127,6 +127,18 @@ export function resolveRouting(input) {
   if (!uniqueIds(policy.profiles) || !uniqueIds(policy.rules) || !uniqueIds(catalog.entries) || !uniqueIds(context.reviews) ||
       !uniqueIds(context.overrideAuthorizations) || new Set(context.evidence.map(x => x.reference)).size !== context.evidence.length ||
       new Set(context.evidence.map(x => `${x.kind}:${x.scope}`)).size !== context.evidence.length) return finish('ambiguous_records');
+  if (context.reviews.some(({ subject }) => subject.kind === 'planned_output'
+    ? subject.unitId !== context.unitId || subject.attemptId !== context.attemptId
+    : subject.sourceSha !== context.sourceSha)) return finish('review_subject_mismatch');
+  // The controller supplies immutable existing-artifact contributors. Planned
+  // output additionally belongs to the new execution pinned by this context.
+  // Main candidate assessment requires an exact match to that producer identity
+  // before any plan can be returned; reviewer-role jobs are not blanket-banned.
+  function reviewAuthors(obligation) {
+    const authors = [context.writer, ...context.existingContributors];
+    if (obligation.subject.kind === 'planned_output') authors.push(context.execution);
+    return authors.filter((author, index) => authors.findIndex(other => equal(author, other)) === index);
+  }
   const entries = new Map(catalog.entries.map(x => [x.id, x]));
   const profiles = new Map(policy.profiles.map(x => [x.id, x]));
   if (profiles.has(request.requestedProfile)) output.requestedProfile = request.requestedProfile;
@@ -187,8 +199,9 @@ export function resolveRouting(input) {
     if (obligation) {
       if (e.provider !== obligation.provider || e.model !== obligation.model || e.family !== obligation.family ||
           (obligation.explicitEffort !== null && emitted !== obligation.explicitEffort)) return bad('mandatory_review_mismatch');
-      if ((obligation.independent && executionId === context.writer.executionId) ||
-          (obligation.crossFamily && e.family === context.writer.family)) return bad('review_not_independent');
+      if (reviewAuthors(obligation).some(author =>
+        (obligation.independent && executionId === author.executionId) ||
+        (obligation.crossFamily && e.family === author.family))) return bad('review_not_independent');
       if (obligation.kind === 'service') {
         const proof = evidence('service', obligation.id, digest(obligation));
         if (!proof || proof.executionId !== executionId) return bad('mandatory_service_unconfirmed');
@@ -214,7 +227,10 @@ export function resolveRouting(input) {
       if (result.selection) { selected = result.selection; break; }
     }
     if (!selected) return finish('mandatory_review_unavailable');
-    output.reviewPlans.push({ obligationId: obligation.id, selection: selected });
+    output.reviewPlans.push({
+      obligationId: obligation.id, subject: copy(obligation.subject),
+      independenceAuthors: copy(reviewAuthors(obligation)), selection: selected,
+    });
     reservations.push(profiles.get(selected.profileId).reservation);
   }
   if (request.requestedProfile !== null) {
@@ -680,6 +696,58 @@ function bundledSchemas() {
                 "minItems": 1,
                 "maxItems": 128,
                 "uniqueItems": true
+              },
+              "subject": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "planned_output"
+                      },
+                      "unitId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                      },
+                      "attemptId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "unitId",
+                      "attemptId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "existing_artifact"
+                      },
+                      "sourceSha": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{40}$"
+                      },
+                      "artifactDigest": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceSha",
+                      "artifactDigest"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
               }
             },
             "required": [
@@ -691,7 +759,8 @@ function bundledSchemas() {
               "explicitEffort",
               "independent",
               "crossFamily",
-              "candidates"
+              "candidates",
+              "subject"
             ],
             "additionalProperties": false
           },
@@ -935,6 +1004,41 @@ function bundledSchemas() {
           "minItems": 0,
           "maxItems": 128,
           "uniqueItems": true
+        },
+        "existingContributors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "executionId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "family": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              }
+            },
+            "required": [
+              "executionId",
+              "provider",
+              "family"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 128,
+          "uniqueItems": true
         }
       },
       "required": [
@@ -959,7 +1063,8 @@ function bundledSchemas() {
         "reviews",
         "budget",
         "evidence",
-        "overrideAuthorizations"
+        "overrideAuthorizations",
+        "existingContributors"
       ],
       "additionalProperties": false
     },
@@ -2249,11 +2354,100 @@ function bundledSchemas() {
                   "evidence"
                 ],
                 "additionalProperties": false
+              },
+              "subject": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "planned_output"
+                      },
+                      "unitId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                      },
+                      "attemptId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "unitId",
+                      "attemptId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "const": "existing_artifact"
+                      },
+                      "sourceSha": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{40}$"
+                      },
+                      "artifactDigest": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceSha",
+                      "artifactDigest"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "independenceAuthors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "executionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                    },
+                    "provider": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                    },
+                    "family": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                    }
+                  },
+                  "required": [
+                    "executionId",
+                    "provider",
+                    "family"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 130,
+                "uniqueItems": true
               }
             },
             "required": [
               "obligationId",
-              "selection"
+              "selection",
+              "subject",
+              "independenceAuthors"
             ],
             "additionalProperties": false
           },

@@ -834,11 +834,100 @@
               "evidence"
             ],
             "additionalProperties": false
+          },
+          "subject": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "planned_output"
+                  },
+                  "unitId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                  },
+                  "attemptId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "unitId",
+                  "attemptId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "existing_artifact"
+                  },
+                  "sourceSha": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{40}$"
+                  },
+                  "artifactDigest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "sourceSha",
+                  "artifactDigest"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "independenceAuthors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "executionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                },
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                },
+                "family": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                }
+              },
+              "required": [
+                "executionId",
+                "provider",
+                "family"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 130,
+            "uniqueItems": true
           }
         },
         "required": [
           "obligationId",
-          "selection"
+          "selection",
+          "subject",
+          "independenceAuthors"
         ],
         "additionalProperties": false
       },

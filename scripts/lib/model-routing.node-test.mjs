@@ -165,3 +165,147 @@ test('schema range, array uniqueness, enum, scalar type and safe integer bounds'
     f=>f.trustedContext.execution.executionId='',
   ]){const f=fixture();mutate(f);assert.equal(resolve(f).status,'blocked');}
 });
+
+// Repair round 1: review independence belongs to an explicit artifact/producer.
+function existingArtifactReview() {
+  const f = fixture();
+  f.trustedContext.reviews[0].subject = {
+    kind: 'existing_artifact', sourceSha: f.trustedContext.sourceSha,
+    artifactDigest: 'f'.repeat(64),
+  };
+  // This execution reviews an existing artifact; it did not author that artifact.
+  f.trustedContext.role = 'review';
+  f.policy.rules[0].role = 'review';
+  f.policy.rules[0].candidates = ['review'];
+  f.policy.allowedActions = ['review'];
+  f.trustedContext.allowedActions = ['review'];
+  f.request.actions = ['review'];
+  f.request.requestedProfile = 'review';
+  f.trustedContext.execution = {
+    executionId: 'reviewer-1', provider: 'fake-b', family: 'family-b',
+  };
+  return rebind(f);
+}
+
+test('R1 planned-output receipt binds both prior author and selected new producer', () => {
+  const f = deepFreeze(fixture());
+  const r = resolve(f);
+  assert.equal(r.status, 'planned');
+  const review = r.reviewPlans[0];
+  assert.deepEqual(review.subject, {
+    kind: 'planned_output', unitId: f.trustedContext.unitId, attemptId: f.trustedContext.attemptId,
+  });
+  assert.deepEqual(review.independenceAuthors, [f.trustedContext.writer, {
+    executionId: r.selected.executionId, provider: r.selected.provider, family: r.selected.family,
+  }]);
+  assert.notEqual(review.selection.executionId, r.selected.executionId);
+  assert.notEqual(review.selection.family, r.selected.family);
+});
+
+test('R1 planned output rejects new producer as reviewer even when prior author differs', () => {
+  const f = fixture();
+  f.trustedContext.reviews[0].crossFamily = false; // isolate execution independence
+  f.trustedContext.execution.executionId = 'reviewer-1';
+  for (const proof of f.trustedContext.evidence) {
+    if (proof.scope === 'writer-entry') proof.executionId = 'reviewer-1';
+  }
+  rebind(f);
+  assert.equal(resolve(f).reason, 'mandatory_review_unavailable');
+});
+
+test('R1 planned output rejects producer family even with distinct executions', () => {
+  const f = fixture();
+  f.catalog.entries[0].provider = 'fake-b';
+  f.catalog.entries[0].family = 'family-b';
+  f.trustedContext.execution.provider = 'fake-b';
+  f.trustedContext.execution.family = 'family-b';
+  assert.notEqual(f.trustedContext.execution.executionId, 'reviewer-1');
+  rebind(f);
+  assert.equal(resolve(f).reason, 'mandatory_review_unavailable');
+});
+
+test('R1 existing artifact permits reviewer job matching review plan, not artifact authors', () => {
+  const f = deepFreeze(existingArtifactReview());
+  const r = resolve(f);
+  assert.equal(r.status, 'planned');
+  assert.equal(r.selected.executionId, r.reviewPlans[0].selection.executionId);
+  assert.equal(r.selected.family, r.reviewPlans[0].selection.family);
+  assert.deepEqual(r.reviewPlans[0].subject, f.trustedContext.reviews[0].subject);
+  assert.deepEqual(r.reviewPlans[0].independenceAuthors, [f.trustedContext.writer]);
+  assert.equal(r.compliance, 'unverified');
+});
+
+for (const subject of ['planned_output', 'existing_artifact']) {
+  for (const conflict of ['execution', 'family']) {
+    test(`R1 ${subject} rejects prior author ${conflict} conflict`, () => {
+      const f = subject === 'planned_output' ? fixture() : existingArtifactReview();
+      const obligation = f.trustedContext.reviews[0];
+      if (conflict === 'execution') {
+        obligation.crossFamily = false;
+        f.trustedContext.writer.executionId = 'reviewer-1';
+      } else {
+        obligation.independent = false;
+        f.trustedContext.writer.provider = 'fake-b';
+        f.trustedContext.writer.family = 'family-b';
+      }
+      rebind(f);
+      assert.equal(resolve(f).reason, 'mandatory_review_unavailable');
+    });
+    test(`R1 ${subject} rejects additional contributor ${conflict} conflict`, () => {
+      const f = subject === 'planned_output' ? fixture() : existingArtifactReview();
+      f.trustedContext.existingContributors = [conflict === 'execution'
+        ? { executionId: 'reviewer-1', provider: 'fake-c', family: 'family-c' }
+        : { executionId: 'contributor-2', provider: 'fake-b', family: 'family-b' }];
+      if (conflict === 'execution') f.trustedContext.reviews[0].crossFamily = false;
+      else f.trustedContext.reviews[0].independent = false;
+      rebind(f);
+      assert.equal(resolve(f).reason, 'mandatory_review_unavailable');
+    });
+  }
+  test(`R1 ${subject} preserves independently reviewable contributor provenance`, () => {
+    const f = subject === 'planned_output' ? fixture() : existingArtifactReview();
+    const contributor = { executionId: 'contributor-2', provider: 'fake-c', family: 'family-c' };
+    f.trustedContext.existingContributors = [contributor];
+    rebind(f);
+    const r = resolve(f);
+    assert.equal(r.status, 'planned');
+    assert.ok(r.reviewPlans[0].independenceAuthors.some(author => canonicalJSON(author) === canonicalJSON(contributor)));
+    assert.ok(Object.isFrozen(r.reviewPlans[0].independenceAuthors[1]));
+  });
+}
+
+for (const field of ['unitId', 'attemptId']) {
+  blocked('R1 planned subject binding mismatch ' + field,
+    f => { f.trustedContext.reviews[0].subject[field] = 'other'; }, 'review_subject_mismatch');
+}
+test('R1 existing artifact must bind the trusted source revision', () => {
+  const f = existingArtifactReview();
+  f.trustedContext.reviews[0].subject.sourceSha = '0'.repeat(40);
+  rebind(f);
+  assert.equal(resolve(f).reason, 'review_subject_mismatch');
+});
+blocked('R1 missing subject fails closed', f => { delete f.trustedContext.reviews[0].subject; }, 'invalid_context');
+blocked('R1 missing contributor provenance fails closed', f => { delete f.trustedContext.existingContributors; }, 'invalid_context');
+for (const subject of [
+  {kind:'planned_output', unitId:'unit', attemptId:'attempt-1', artifactDigest:'f'.repeat(64)},
+  {kind:'existing_artifact', sourceSha:'d'.repeat(40)},
+  {kind:'existing_artifact', sourceSha:'d'.repeat(40), artifactDigest:'f'.repeat(64), unitId:'unit'},
+  {kind:'unknown'},
+]) {
+  blocked('R1 strict review subject union ' + canonicalJSON(subject),
+    f => { f.trustedContext.reviews[0].subject = subject; }, 'invalid_context');
+}
+blocked('R1 request cannot substitute review subject', f => {
+  f.request.subject = {kind:'existing_artifact', sourceSha:f.request.sourceSha, artifactDigest:'f'.repeat(64)};
+}, 'invalid_request');
+blocked('R1 planned producer must match selected runtime identity', f => {
+  f.trustedContext.execution.family = 'other-family';
+}, 'no_eligible_candidate');
+test('R1 identical prior and new producer identities are deduplicated in receipt', () => {
+  const f = fixture();
+  f.trustedContext.writer = {...f.trustedContext.execution};
+  rebind(f);
+  const r = resolve(f);
+  assert.equal(r.status, 'planned');
+  assert.equal(r.reviewPlans[0].independenceAuthors.length, 1);
+});

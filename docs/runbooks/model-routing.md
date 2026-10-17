@@ -26,10 +26,29 @@ bindings and temporal validity only; synthetic evidence never proves live access
 The request repeats context's project/repository, exact source/base SHA, unit,
 attempt, owner, role, risk and policy/review-policy/catalog digests. Disagreement,
 including differing ordered capabilities/actions, blocks. `snapshotRevision` pins
-the controller snapshot. The controller supplies immutable writer provenance and
-all mandatory review obligations. Empty obligations are appropriate only when the
-authenticated review policy requires none; the resolver cannot infer the real
+the controller snapshot. The controller supplies immutable `writer` provenance,
+the explicit `existingContributors` array, and all mandatory review obligations.
+Empty obligations are appropriate only when the authenticated review policy
+requires none; the resolver cannot infer the real
 review graph from its digest. Request data cannot add or remove obligations.
+
+Every obligation requires a closed `subject` union. A `planned_output` subject names
+this context's `unitId` and `attemptId`; an `existing_artifact` subject names this
+context's exact `sourceSha` and the immutable artifact's `artifactDigest`. Missing,
+ambiguous or mismatched subjects block. The authenticated controller establishes
+the artifact digest and complete contributor provenance; A0 does not read artifact
+bytes or infer authors from Git. The request cannot redefine subjects or authors.
+
+For either subject, required execution/family independence is checked against
+`writer` and every `existingContributors` identity. For planned output, it is also
+checked against `context.execution`, the new producer. Every eligible main candidate
+must exactly match that pinned execution ID/provider/family before the resolver can
+return `planned`, so this includes the selected producer even when the prior author
+differs. For an existing artifact, the current reviewing execution is not treated
+as its author merely because it is the current job; a reviewer-role execution may
+legitimately match the review plan while remaining independent of all artifact
+authors. An existing-artifact obligation does not cover future output. The trusted
+review policy must explicitly require a planned-output obligation when needed.
 
 A request's mode must be `new` to produce a plan. `running` and `handoff` are
 recognized negative cases returning `integration_deferred`. A new approved policy
@@ -54,7 +73,9 @@ resumption belong to the controller, not this library.
    and materially similar failures ceiling at most three. Infrastructure-failure
    classification is the trusted controller's responsibility.
 4. Plan every mandatory review, enforcing exact provider/model/family, explicit
-   effort where required, writer execution independence and family independence.
+   effort where required, subject-bound execution independence and family
+   independence against every relevant author, including the new producer for
+   planned output.
    A mandatory service step additionally requires a fresh confirmed service record;
    an agent's claim or prediction score is not such evidence. Plans are never
    completed reviews, including when synthetic service evidence is supplied.
@@ -93,7 +114,10 @@ Receipts have only `planned` or `blocked`, with `compliance: "unverified"`.
 The receipt schema deliberately restricts states to A0; later lifecycle states need
 separate versioned integration work. It preserves request/context/policy/catalog/
 override digests, source bindings, snapshot revision, inherited budget counters,
-applied ceiling, review plans and bounded rejection reasons. Requested profile and
+applied ceiling, review plans and bounded rejection reasons. Each review plan
+retains its exact subject and `independenceAuthors` identities. Duplicate identical
+author identities are recorded once. These provenance fields remain unverified
+controller declarations, not a completed review receipt. Requested profile and
 original requested effort are separate from selected profile/requested effort and
 `plannedEmission`. Actual `emittedEffort` and every `observedEffective` field remain
 `unknown`. A high-effort plan cannot certify high effective effort. Authorized
@@ -154,6 +178,13 @@ JEV effort/surface/version, budget, override, review, omission and replan cases.
 ARCH-R16's offline portion demonstrates unverified effective effort; actual runtime
 observation is deferred. Explicit skipped cases identify controller/adapter/sync
 acceptance; mocks do not turn those into passes.
+
+Repair round 1 adds same-execution and same-family regressions for both subject
+types, additional-contributor conflicts, exact subject bindings, selected-producer
+identity and a valid existing-artifact reviewer job. Removing the planned producer
+or existing contributors from independence checks must turn those regressions red;
+blanket treatment of the current reviewer as an existing-artifact author must also
+fail the positive cases. The original head's passing tests did not cover this defect.
 
 Temporary guard-removal checks must make negative tests fail, followed by exact
 source restoration and a passing rerun. Independent QA and named-provider review
