@@ -17,6 +17,9 @@ export const PSTACK_CONFIG_FILE = "pstack.config.json";
 export const PSTACK_CONFIG_VERSION = 1;
 export const PLACEHOLDER = /\{\{[A-Z_]+\}\}/;
 export const DEFAULT_NA_PREFIX = "Journey test: N/A - ";
+export const DEFAULT_BRANCH = "main";
+/** A branch name safe to fill into workflow YAML and shell commands: git ref characters only, no "..". */
+export const BRANCH_NAME = /^(?!.*\.\.)[A-Za-z0-9][\w./-]*$/;
 
 const isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
 
@@ -42,6 +45,8 @@ export function parsePstackConfig(input) {
   if (typeof config.project?.owner !== "string" || config.project.owner.trim() === "") problems.push("project.owner is required");
   const handle = config.project?.ownerHandle;
   if (handle !== undefined && !(typeof handle === "string" && (PLACEHOLDER.test(handle) || /^@[A-Za-z0-9][\w.-]*(?:\/[\w.-]+)?$/.test(handle)))) problems.push("project.ownerHandle must be a GitHub @user or @org/team");
+  const branch = config.project?.defaultBranch;
+  if (branch !== undefined && !(typeof branch === "string" && (PLACEHOLDER.test(branch) || BRANCH_NAME.test(branch)))) problems.push("project.defaultBranch must be a branch name");
 
   const journey = config.journeyTests ?? {};
   checkGlobs("journeyTests.userVisible", journey.userVisible, problems, { required: true });

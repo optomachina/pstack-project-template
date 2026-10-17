@@ -25,7 +25,7 @@ Rules that never bend:
 - The gate reads the **base** copy of `docs/sensitive-paths.json` and `pstack.config.json` (`--base-ref`), and CI runs the base copy of the script. A PR cannot loosen its own gate.
 
 ```bash
-npm run review-gate -- --base-ref origin/main --changed-files-from <(git diff --name-status -z --no-renames origin/main...HEAD)
+npm run review-gate -- --base-ref origin/{{DEFAULT_BRANCH}} --changed-files-from <(git diff --name-status -z --no-renames origin/{{DEFAULT_BRANCH}}...HEAD)
 ```
 
 ## Jev (optional)

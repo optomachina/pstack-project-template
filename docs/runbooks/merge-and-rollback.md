@@ -40,7 +40,7 @@ Default: revert the squash commit.
 
 ```bash
 git fetch origin
-git switch -c fix/revert-<short-sha> origin/main
+git switch -c fix/revert-<short-sha> origin/{{DEFAULT_BRANCH}}
 git revert --no-edit <squash-sha>
 git push -u origin HEAD
 gh pr create --fill --title "revert: <original title>" --body "Reverts <squash-sha> because <observed failure>."

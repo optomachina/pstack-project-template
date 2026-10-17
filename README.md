@@ -20,8 +20,9 @@ A project-agnostic copy of OverDrafter's pstack engineering setup: an agent cont
 | `scripts/check-pr-body.mjs` | PR body gate: preflight lines, journey test, review tier, sensitive classes |
 | `scripts/preflight.sh` | typecheck, lint, test, build: each when `package.json` defines it, with a `preflight: <stage> PASS/FAIL/SKIP` line per stage |
 | `scripts/sync-template.mjs` | Install or update the template in a project |
-| `.github/workflows/ci.yml` | `preflight`, `agent-contract`, `pr-gates` (sensitive report, review gate, journey check, all from the base copy), aggregate `ci` |
-| `.github/workflows/pr-body-gate.yml` | `pr-body` check (runs on body edits without rerunning CI) |
+| `templates/.github/workflows/ci.yml` | `preflight`, `agent-contract`, `pr-gates` (sensitive report, review gate, journey check, all from the base copy), aggregate `ci` |
+| `templates/.github/workflows/pr-body-gate.yml` | `pr-body` check (runs on body edits without rerunning CI) |
+| `scripts/fixtures/pstack-config/template.json` | The template's `pstack.config.json`, which the gate tests use so a project's own globs cannot break them |
 | `.github/pull_request_template.md` | Preflight lines, journey test, review tier, sensitive classes, risk and rollback |
 | `docs/runbooks/` | `pr-lifecycle`, `review-gates`, `repair-budget`, `merge-and-rollback`, `branch-protection` |
 | `docs/agent-graph.md` | Where the agent graph is defined, plus metrics |
@@ -52,7 +53,7 @@ Re-run `node scripts/sync-template.mjs <project>`. It:
 - overwrites managed files but keeps everything between `<!-- project:begin [id] -->` and `<!-- project:end [id] -->` lines (matched by id, or by position for unnamed blocks). It keeps blocks the template dropped, appended at the end, with a warning. Markers work inside any comment syntax (`# <!-- project:begin x -->` in YAML);
 - never overwrites `pstack.config.json`;
 - adds new template sensitive globs and classes to the project's list, and never removes or reclassifies the project's own;
-- fills `{{PROJECT}}`, `{{OWNER}}` and `{{DEFAULT_BRANCH}}` in Markdown, workflow and CODEOWNERS files from `pstack.config.json`, and `{{OWNER_HANDLE}}` (the gate's code owner in `.github/CODEOWNERS`) from `project.ownerHandle`, defaulting to `@optomachina`;
+- fills `{{PROJECT}}`, `{{OWNER}}` and `{{DEFAULT_BRANCH}}` in Markdown, workflow and CODEOWNERS files from `pstack.config.json` (`project.defaultBranch`, default `main`: the CI push trigger, the runbooks' `origin/<branch>` and `gh api .../branches/<branch>/protection` commands), and `{{OWNER_HANDLE}}` (the gate's code owner in `.github/CODEOWNERS`) from `project.ownerHandle`, defaulting to `@optomachina`;
 - regenerates the AGENTS.md sensitive block from the project's list;
 - writes `.pstack-template-version` (template name, version, commit, sync time, file hashes).
 
@@ -71,12 +72,14 @@ npm run review-gate -- [--base-ref <ref>] [--changed-files-from <name-status>] [
 npm run journey-tests:check -- --changed-files-from <name-status> [--body-file <md>] [--base-ref <ref>]
 node scripts/check-pr-body.mjs --body-file <md> [--review-gate-json <review-gate.json>]
 node scripts/sync-template.mjs <target-dir> [--dry-run] [--project <name>] [--owner <name>] [--add-scripts]
+npm run render-self                        # template repo only: re-render .github/workflows/ from templates/ (-- --check to verify)
 ```
 
 Test files are named `*.node-test.mjs` so that projects using Vitest or Jest do not collect them. Run them with `node --test`.
 
 ## Design notes
 
+- **Workflow sources.** GitHub cannot read the push branch from an expression, so the workflows are kept with placeholders under `templates/.github/workflows/` and sync fills them per project. The template's own `.github/workflows/` are rendered copies (from its `pstack.config.json`, `main`), so this repository runs the same gate. Edit the `templates/` copy and run `npm run render-self`; `npm test` fails while the copies are stale.
 - **Base-ref semantics.** Gates read `docs/sensitive-paths.json` and `pstack.config.json` from the PR's base, and CI runs the base copy of the gate scripts, so a PR cannot loosen its own gate. A base ref that is given must resolve to a commit (an empty string from an unset variable included), or the call fails closed. It never falls back to the PR's copy. The head copy is used only when the base commit has no copy (the PR that introduces it).
 - **Fail closed.** An empty file list, an unreadable list or an unresolvable base means `opus` review and no auto-merge. A failed, uncertain or unconfigured Jev screen counts as `normal`.
 - **Gate loosening.** Removing, narrowing or reclassifying a sensitive glob, removing a class, or editing gate code is flagged in the report and needs owner approval plus Opus review. The gate files are themselves on the list (`infra_ci`).

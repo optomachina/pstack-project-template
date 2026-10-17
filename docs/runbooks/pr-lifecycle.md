@@ -19,8 +19,8 @@ Managed by the pstack template. Policy lives in `AGENTS.md`; this is the procedu
 
 ```bash
 npm run preflight                      # paste the "preflight: <stage> ..." lines into the PR
-npm run review-gate -- --base-ref origin/main $(git diff --name-only origin/main...HEAD)
-node scripts/check-journey-tests.mjs --changed-files-from <(git diff --name-status --no-renames origin/main...HEAD) --body-file pr-body.md
+npm run review-gate -- --base-ref origin/{{DEFAULT_BRANCH}} $(git diff --name-only origin/{{DEFAULT_BRANCH}}...HEAD)
+node scripts/check-journey-tests.mjs --changed-files-from <(git diff --name-status --no-renames origin/{{DEFAULT_BRANCH}}...HEAD) --body-file pr-body.md
 ```
 
 Fill `.github/pull_request_template.md`: preflight lines, `Journey test:`, `Review tier:` and `Sensitive classes:` from the review gate, risk and rollback.

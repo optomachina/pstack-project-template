@@ -10,7 +10,8 @@ import { checkJourneyTests, findWaiver, main } from "./check-journey-tests.mjs";
 import { parsePstackConfig } from "./lib/pstack-config.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const configText = readFileSync(join(repoRoot, "pstack.config.json"), "utf8");
+// The template's own journey globs (a fixture), so a project's edits to its pstack.config.json cannot break these tests.
+const configText = readFileSync(join(repoRoot, "scripts/fixtures/pstack-config/template.json"), "utf8");
 const config = parsePstackConfig(configText);
 const changes = (...files) => files.map((file) => (typeof file === "string" ? { status: "M", file } : file));
 

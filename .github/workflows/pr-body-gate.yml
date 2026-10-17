@@ -1,6 +1,7 @@
 name: PR body gate
 
-# Managed by the pstack template. Separate from ci.yml on purpose: the
+# Managed by the pstack template (source: templates/.github/workflows/
+# pr-body-gate.yml in the template repository). Separate from ci.yml on purpose: the
 # `edited` trigger fires on every title or body edit (review bots edit bodies)
 # and must not rerun or cancel the full CI suite.
 #

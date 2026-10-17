@@ -13,7 +13,9 @@ import { SENSITIVE_PATHS_FILE, classifyPaths, loadSensitivePaths } from "./lib/s
 // head that edits the configs and the scripts to wave itself through.
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const WORKFLOWS = [".github/workflows/ci.yml", ".github/workflows/pr-body-gate.yml"];
-const CONFIGS = [SENSITIVE_PATHS_FILE, "pstack.config.json", "AGENTS.md"];
+const CONFIGS = [SENSITIVE_PATHS_FILE, "AGENTS.md"];
+// The base's pstack.config.json is the template's (a fixture), so a project's own globs cannot break these tests.
+const PSTACK_FIXTURE = "scripts/fixtures/pstack-config/template.json";
 
 const temps = [];
 after(() => {
@@ -65,6 +67,7 @@ function tamperedRepo() {
   const dir = tempDir("gate-workflow-");
   git(dir, "init", "-q");
   for (const file of [...CONFIGS, ...allGateFiles]) write(dir, file, read(repoRoot, file));
+  write(dir, "pstack.config.json", read(repoRoot, PSTACK_FIXTURE));
   write(dir, "src/components/Card.tsx", "export const Card = () => null;\n");
   git(dir, "add", "-A");
   git(dir, "commit", "-qm", "base");
@@ -168,6 +171,7 @@ describe("gate workflows", () => {
     git(dir, "add", "-A");
     git(dir, "commit", "-qm", "base");
     for (const file of [...CONFIGS, ...allGateFiles]) write(dir, file, read(repoRoot, file));
+    write(dir, "pstack.config.json", read(repoRoot, PSTACK_FIXTURE));
     git(dir, "add", "-A");
     git(dir, "commit", "-qm", "add the gate");
     for (const workflow of WORKFLOWS) assert.match(prepare(dir, workflow).stdout, /Gate scripts taken from: head/);
@@ -192,10 +196,12 @@ describe("code owners", () => {
   const governed = [
     ...WORKFLOWS,
     ".github/workflows/new-workflow.yml",
+    "templates/.github/workflows/ci.yml",
     ".github/CODEOWNERS",
     ".github/pull_request_template.md",
     SENSITIVE_PATHS_FILE,
     "pstack.config.json",
+    PSTACK_FIXTURE,
     "AGENTS.md",
     "CLAUDE.md",
     ...allGateFiles,
@@ -206,10 +212,13 @@ describe("code owners", () => {
   ];
 
   it("owns every workflow, gate script and gate config", () => {
+    // {{OWNER_HANDLE}} in the template, project.ownerHandle once synced.
+    const owner = rules.find(([pattern]) => pattern === "/.github/workflows/")?.[1];
+    assert.ok(owner, "the workflows have a code owner");
     for (const file of governed) {
       const rule = rules.findLast(([pattern]) => owns(pattern, file));
       assert.ok(rule, `${file} has a code owner`);
-      assert.equal(rule[1], "{{OWNER_HANDLE}}", `${file} is owned by the template owner`);
+      assert.equal(rule[1], owner, `${file} is owned by the gate owner`);
     }
   });
 
