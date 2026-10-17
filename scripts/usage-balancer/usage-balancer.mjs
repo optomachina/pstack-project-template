@@ -58,8 +58,8 @@ export function windowsOf(entry, now = Date.now()) {
 }
 
 /** Only a complete, unambiguous Grok model name authorizes Cursor billing. */
-export const isGrokModel = (model) => typeof model === "string" &&
-  /^(?:xai\/|x-ai\/)?grok(?:[0-9][0-9a-z]*|[-_.][0-9a-z]+)*$/i.test(model.trim()) &&
+export const isGrokModel = (model) => typeof model === "string" && model.trim().length <= 64 &&
+  /^(?:xai\/|x-ai\/)?grok(?:[0-9][0-9a-z]*)?(?:[-_.][0-9a-z]+)*$/i.test(model.trim()) &&
   !/claude|opus|sonnet|haiku|gpt|gemini|composer|auto|o\d|llama|deepseek|qwen|mistral/i.test(model);
 const validCap = (cap) => Number.isFinite(cap) && cap > 0 && cap <= 1;
 const validMaxAge = (hours) => Number.isFinite(hours) && hours > 0;
@@ -84,7 +84,8 @@ export function cursorEligibility(row, { model, cap = CURSOR_INCLUDED_CAP, curso
     Number.isFinite(w.windowMinutes) && w.windowMinutes >= 10080 && paceFor(w, now);
   const selected = totalKeys.length ? totalKeys : present.filter((key) => validWindow(u[key]));
   const malformed = totalKeys.length ? totalKeys.some((key) => !validWindow(u?.[key])) :
-    present.some((key) => !Number.isFinite(u[key]?.usedPercent) || u[key].usedPercent < 0);
+    present.some((key) => !Number.isFinite(u[key]?.usedPercent) || u[key].usedPercent < 0 ||
+      !Number.isFinite(u[key].windowMinutes) || !Number.isFinite(Date.parse(u[key].resetsAt)));
   const includedUsedPercent = !malformed && selected.length ? Math.max(...selected.map((key) => u[key].usedPercent)) : null;
   const result = (reason) => ({ eligible: reason === "ok", reason, includedUsedPercent, capPercent: cap * 100 });
   if (typeof model !== "string" || !model.trim()) return result("model_unknown");

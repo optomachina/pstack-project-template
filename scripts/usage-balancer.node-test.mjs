@@ -347,3 +347,26 @@ test("finding 9: real CodexBar Cursor shape routes fresh Grok without account ou
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("re-review 1: no-Total fallback fails closed on a window with missing length or unparsable reset", () => {
+  for (const patch of [{ windowMinutes: null }, { windowMinutes: undefined }, { resetsAt: "bad" }, { resetsAt: undefined }]) {
+    const value = entry(10, reset, { primary: { usedPercent: 95, windowMinutes: week, resetsAt: reset, ...patch } });
+    const r = cursorEligibility(value, { model: "grok-4.6", now });
+    assert.equal(r.reason, "usage_unknown", JSON.stringify(patch));
+    assert.equal(grokRoute([poolFor("cursor", value, now)]).newBuildPool, null);
+  }
+  const short = entry(10, reset, { primary: { usedPercent: 95, windowMinutes: 300, resetsAt: "2026-10-17T04:00:00Z" } });
+  assert.equal(cursorEligibility(short, { model: "grok-4.6", now }).reason, "ok", "a well-formed short window is skipped, not malformed");
+});
+
+test("re-review 2: Grok name matching is linear and length capped", () => {
+  const started = Date.now();
+  for (let n = 20; n <= 60; n += 10) {
+    assert.equal(isGrokModel(`grok${"1".repeat(n)}!`), false);
+    assert.equal(isGrokModel(`grok-${"1.".repeat(n)}x!`), false);
+  }
+  assert.ok(Date.now() - started < 200, "regex must not backtrack exponentially");
+  assert.equal(isGrokModel(`grok-${"a".repeat(80)}`), false, "over 64 characters");
+  for (const model of ["grok", "grok4", "grok-4", "grok_4", "grok-4.6", "xai/grok-4.6", "grok-code-fast-1"]) assert.equal(isGrokModel(model), true, model);
+  for (const model of ["grokish", "agroky", "notgrok"]) assert.equal(isGrokModel(model), false, model);
+});
