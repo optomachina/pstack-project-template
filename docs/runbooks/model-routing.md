@@ -269,14 +269,16 @@ not adoption, and dry-run writes nothing.
 
 The base-governed gate additionally binds current Git base/head, `digest({treeSha})`
 as the committed artifact identity, and `digest(rawBinaryDiffText)` as the diff
-identity (`git diff --binary --no-ext-diff base head`, including its final newline).
+identity (`git diff --binary --no-ext-diff --ignore-submodules=none base head`, including its final newline).
 Its adoption patch uses that same diff convention. The generic pure planner still
 accepts authenticated caller artifact digests; the template gate fixes a concrete
 Git convention. Working-tree changes are not a substitute for a committed head.
 The gate derives the complete file inventory and line counts from those committed
 revisions, ignoring caller file/size hints. Rename detection is disabled so deleted
 and renamed sensitive source paths remain classified. Base configuration supplies
-size exclusions. Source-review repository identity must equal the transition
+size exclusions. All current/adoption patch, inventory and size diff commands
+explicitly use `--ignore-submodules=none`, so repository or local ignore settings
+cannot hide committed gitlink changes. Source-review repository identity must equal the transition
 target, and current policy, context and request must bind that same repository.
 
 The template CLI's v1 lane remains compatible. `--contract v2` blocks without the

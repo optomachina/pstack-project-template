@@ -28,13 +28,19 @@ function sourceReviewFor(baseSha,headSha,patchDigest) {
   for(const p of f.policy.profiles.filter(p=>['review','deep'].includes(p.id)))p.effort.value='xhigh';
   return completionFixture(rebindV2(f));
 }
-function governedFixture() {
+function governedFixture(submoduleIgnore=null) {
   const root=mkdtempSync(join(tmpdir(),'review-v2-'));roots.push(root);git(root,'init','-q');
   write(root,'README.md','synthetic baseline\n');git(root,'add','.');git(root,'commit','-qm','old policy');const baseSha=git(root,'rev-parse','HEAD');
   const f=fixtureV2(),policy=policyFor(f);
   for(const file of files)write(root,file,readFileSync(join(repository,file)));
-  write(root,'docs/review-policy.json',JSON.stringify(policy));git(root,'add','.');git(root,'commit','-qm','adoption candidate');
-  const headSha=git(root,'rev-parse','HEAD'),patchDigest=digest(execFileSync('git',['diff','--binary','--no-ext-diff',baseSha,headSha],{cwd:root,encoding:'utf8'}));
+  write(root,'docs/review-policy.json',JSON.stringify(policy));
+  if(submoduleIgnore){
+    write(root,'.gitmodules','[submodule "shared"]\n path = infra/shared\n url = ./synthetic\n ignore = '+submoduleIgnore+'\n');
+  }
+  git(root,'add','.');
+  if(submoduleIgnore)git(root,'update-index','--add','--cacheinfo','160000,'+baseSha+',infra/shared');
+  git(root,'commit','-qm','adoption candidate');
+  const headSha=git(root,'rev-parse','HEAD'),patchDigest=digest(execFileSync('git',['diff','--binary','--no-ext-diff','--ignore-submodules=none',baseSha,headSha],{cwd:root,encoding:'utf8'}));
   const sourceReview=sourceReviewFor(baseSha,headSha,patchDigest);
   const transition={schema:'review-transition.v1',repoId:'repo',baseSha,headSha,patchDigest,oldPolicyDigest:'c'.repeat(64),newPolicyDigest:digest(policy),allowedBindings:policy.bindings,
     predicates:{executionIndependence:true,preserveExplicitDiversity:true,distinctSlots:true},sourceReviewDigest:digest(sourceReview),authorizationRef:'owner-transition',issuedAt:'2026-10-17T12:01:00Z',expiresAt:'2026-10-18T00:00:00Z'};
@@ -106,7 +112,7 @@ function bindCurrentRevision(x) {
   const f=x.routingInput,t=f.trustedContext,head=git(x.root,'rev-parse','HEAD');
   t.sourceSha=head;t.reviewSubject.sourceSha=head;
   t.artifactDigest=digest({treeSha:git(x.root,'rev-parse',`${head}^{tree}`)});t.reviewSubject.artifactDigest=t.artifactDigest;
-  t.diffDigest=digest(execFileSync('git',['diff','--binary','--no-ext-diff',x.baseRef,head],{cwd:x.root,encoding:'utf8'}));
+  t.diffDigest=digest(execFileSync('git',['diff','--binary','--no-ext-diff','--ignore-submodules=none',x.baseRef,head],{cwd:x.root,encoding:'utf8'}));
   rebindV2(f);x.completion=completionFixture(f);
 }
 test('TR1 committed workflow cannot be hidden behind caller README and low risk',async()=>{
@@ -135,4 +141,17 @@ test('TR1 source review cannot authorize another repository with the same Git hi
 test('TR1 routing repository must equal the authenticated adoption target',async()=>{
   const x=governedFixture();x.routingInput.policy.repoId='other-repo';x.routingInput.trustedContext.repoId='other-repo';rebindV2(x.routingInput);x.completion=completionFixture(x.routingInput);
   assert.equal((await runReviewGateV2(x)).status,'blocked');
+});
+
+for(const ignore of ['all','none','local-all'])test('TR2 committed gitlink remains sensitive with ignore='+ignore,async()=>{
+  const x=governedFixture(ignore==='local-all'?'none':ignore);
+  if(ignore==='local-all')git(x.root,'config','submodule.shared.ignore','all');
+  git(x.root,'update-index','--cacheinfo','160000,'+x.baseRef+',infra/shared');
+  write(x.root,'README.md','synthetic baseline\nnew docs\n');git(x.root,'add','README.md');git(x.root,'commit','-qm','update gitlink and docs');
+  x.routingInput.trustedContext.risk='low';x.routingInput.policy.rules[0].risk='low';bindCurrentRevision(x);
+  x.files=['README.md'];x.changedLines=0;x.gate={status:'accepted',choice:'low',confidence:0.99};
+  let d=await runReviewGateV2(x);assert.equal(d.risk,'risky');assert.equal(d.status,'blocked');assert.equal(d.auto_merge.eligible,false);
+  assert.equal(d.obligations.length,2);assert.ok(d.sensitive.files.some(f=>f.path==='infra/shared'));assert.equal(d.files,2);assert.equal(d.pr_size.changed_lines,3);
+  x.routingInput.trustedContext.risk='high';x.routingInput.policy.rules[0].risk='high';bindCurrentRevision(x);
+  d=await runReviewGateV2(x);assert.equal(d.status,'consistent');assert.equal(d.auto_merge.eligible,false);
 });

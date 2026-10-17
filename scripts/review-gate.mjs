@@ -344,15 +344,15 @@ function checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execF
     const head=git('rev-parse','--verify','--end-of-options',`${headRef}^{commit}`).trim();
     const base=git('rev-parse','--verify','--end-of-options',`${baseRef}^{commit}`).trim();
     const treeSha=git('rev-parse',`${head}^{tree}`).trim();
-    const patch=digest(git('diff','--binary','--no-ext-diff',base,head));
-    const adoptionPatch=digest(git('diff','--binary','--no-ext-diff',adoption.transition.baseSha,adoption.transition.headSha));
+    const patch=digest(git('diff','--ignore-submodules=none','--binary','--no-ext-diff',base,head));
+    const adoptionPatch=digest(git('diff','--ignore-submodules=none','--binary','--no-ext-diff',adoption.transition.baseSha,adoption.transition.headSha));
     if(adoption.transition.patchDigest!==adoptionPatch)return 'transition_patch_mismatch';
     if(routingInput&&['policy','trustedContext','request'].some(k=>routingInput[k]?.repoId!==adoption.transition.repoId))return 'repository_binding_mismatch';
     if(routingInput&&(routingInput.trustedContext?.sourceSha!==head||routingInput.trustedContext?.baseSha!==base||
       routingInput.trustedContext?.diffDigest!==patch||routingInput.trustedContext?.artifactDigest!==digest({treeSha})))return 'stale_revision_binding';
     // Disabling rename detection retains deleted sources and added destinations.
-    const files=git('diff','--name-only','-z','--no-renames','--no-ext-diff',base,head).split('\0').filter(Boolean);
-    const numstat=git('diff','--numstat','--no-renames','--no-ext-diff',base,head);
+    const files=git('diff','--ignore-submodules=none','--name-only','-z','--no-renames','--no-ext-diff',base,head).split('\0').filter(Boolean);
+    const numstat=git('diff','--ignore-submodules=none','--numstat','--no-renames','--no-ext-diff',base,head);
     return {files,numstat};
 }
 
