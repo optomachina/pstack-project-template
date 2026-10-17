@@ -15,7 +15,7 @@
  *
  *   node scripts/usage-balancer/usage-balancer.mjs [--providers codex,claude,cursor]
  *     [--source claude=web]... [--codexbar-json f]... [--jev-log f]... [--jev-probe]
- *     [--timeout-s 40] [--now ISO] [--model grok-4.6] [--cursor-cap 0.90]
+ *     [--timeout-s 40] [--now ISO] [--model grok-4.6] [--cursor-cap 0.90] [--cursor-max-age-h 6]
  */
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -23,6 +23,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const CURSOR_INCLUDED_CAP = 0.90;
+export const CURSOR_MAX_AGE_HOURS = 6;
 export const REVIEW_ONLY_PERCENT = 90;
 export const BURN_WINDOW_HOURS = 24;
 export const ON_PACE_BAND = 3; // percentage points
@@ -56,41 +57,64 @@ export function windowsOf(entry, now = Date.now()) {
   return { budget, short };
 }
 
-/** Only an explicit Grok token authorizes Cursor model billing. */
-export const isGrokModel = (model) => typeof model === "string" && /(?:^|[^a-z0-9])grok(?:$|[^a-z])/i.test(model);
+/** Only a complete, unambiguous Grok model name authorizes Cursor billing. */
+export const isGrokModel = (model) => typeof model === "string" &&
+  /^(?:xai\/|x-ai\/)?grok(?:[0-9][0-9a-z]*|[-_.][0-9a-z]+)*$/i.test(model.trim()) &&
+  !/claude|opus|sonnet|haiku|gpt|gemini|composer|auto|o\d|llama|deepseek|qwen|mistral/i.test(model);
 const validCap = (cap) => Number.isFinite(cap) && cap > 0 && cap <= 1;
-const onDemand = (row) => row?.onDemand === true || /^(cursor[-_]on[-_]demand|on[-_]demand)$/i.test(row?.pool ?? "") || /on[-_ ]demand|usage[-_ ]based/i.test(`${row?.mode ?? ""} ${row?.billing ?? ""}`);
-const positiveSpend = (value) => value && typeof value === "object" && Object.entries(value).some(([key, v]) =>
-  typeof v === "object" ? positiveSpend(v) : /used|spend|spent|cost|amount/i.test(key) && Number(v) > 0);
+const validMaxAge = (hours) => Number.isFinite(hours) && hours > 0;
+const providerName = (name) => String(name ?? "").trim().toLowerCase();
+const demandLabel = /on[-_ ]?demand|usage[-_ ]?based/i;
+const onDemand = (row) => row?.onDemand === true || /^(cursor[-_]on[-_]demand|on[-_]demand)$/i.test(providerName(row?.pool)) || demandLabel.test(`${row?.mode ?? ""} ${row?.billing ?? ""}`);
+const spendRisk = (value) => value && typeof value === "object" && Object.entries(value).some(([key, v]) =>
+  /used|spend|spent|cost|amount/i.test(key)
+    ? !Number.isFinite(v) || v < 0 || v > 0
+    : v && typeof v === "object" && spendRisk(v));
+const windowKeys = ["primary", "secondary", "tertiary"];
 
 /** Included allowance only; retain the original windows on pool rows for rechecking. */
-export function cursorEligibility(row, { model, cap = CURSOR_INCLUDED_CAP, now = row?.cursorCheckedAt ?? Date.now() } = {}) {
+export function cursorEligibility(row, { model, cap = CURSOR_INCLUDED_CAP, cursorMaxAgeHours = CURSOR_MAX_AGE_HOURS, now = row?.cursorCheckedAt ?? Date.now() } = {}) {
   if (!validCap(cap)) throw new Error("cursor cap must be a fraction greater than 0 and at most 1");
+  if (!validMaxAge(cursorMaxAgeHours)) throw new Error("cursor max age must be positive finite hours");
   const entry = row?.cursorEntry ?? row;
   const u = entry?.usage;
-  const windows = ["primary", "secondary", "tertiary"].flatMap((key) => {
-    const w = u?.[key];
-    return w && Number.isFinite(w.windowMinutes) && w.windowMinutes >= 10080 && w.usedPercent >= 0 && paceFor(w, now) ? [{ key, ...w }] : [];
-  });
-  const total = windows.find((w) => /^total$/i.test(entry?.rateWindowLabels?.[w.key] ?? ""));
-  const includedUsedPercent = total?.usedPercent ?? (windows.length ? Math.max(...windows.map((w) => w.usedPercent)) : null);
+  const present = windowKeys.filter((key) => u?.[key] !== undefined);
+  const totalKeys = Object.keys(entry?.rateWindowLabels ?? {}).filter((key) => /^total$/i.test(entry.rateWindowLabels[key]));
+  const validWindow = (w) => w && Number.isFinite(w.usedPercent) && w.usedPercent >= 0 &&
+    Number.isFinite(w.windowMinutes) && w.windowMinutes >= 10080 && paceFor(w, now);
+  const selected = totalKeys.length ? totalKeys : present.filter((key) => validWindow(u[key]));
+  const malformed = totalKeys.length ? totalKeys.some((key) => !validWindow(u?.[key])) :
+    present.some((key) => !Number.isFinite(u[key]?.usedPercent) || u[key].usedPercent < 0);
+  const includedUsedPercent = !malformed && selected.length ? Math.max(...selected.map((key) => u[key].usedPercent)) : null;
   const result = (reason) => ({ eligible: reason === "ok", reason, includedUsedPercent, capPercent: cap * 100 });
   if (typeof model !== "string" || !model.trim()) return result("model_unknown");
   if (!isGrokModel(model)) return result("non_grok_model");
-  if (onDemand(row) || positiveSpend(u?.providerCost) || Object.entries(u ?? {}).some(([key, value]) =>
-    /on[-_]?demand|usage[-_]?based/i.test(key) && (Number(value) > 0 || positiveSpend(value))) || windows.some((w) => w.usedPercent >= 100)) return result("on_demand_risk");
-  if (!entry || entry.error || includedUsedPercent === null) return result("usage_unknown");
-  return result(includedUsedPercent >= cap * 100 ? "at_or_over_cap" : "ok");
+  const labelledWindows = [
+    ...present.map((key) => ({ window: u[key], label: entry?.rateWindowLabels?.[key] ?? "" })),
+    ...(Array.isArray(u?.extraRateWindows) ? u.extraRateWindows.map((w) => ({
+      window: w?.window ?? w, label: `${entry?.rateWindowLabels?.[w?.id] ?? ""} ${w?.title ?? ""} ${w?.id ?? ""}`,
+    })) : []),
+  ];
+  if (onDemand(row) || spendRisk(u?.providerCost) || spendRisk(entry?.providerCost) ||
+    Object.entries(u ?? {}).some(([key, value]) => demandLabel.test(key) &&
+      (typeof value === "object" ? spendRisk(value) : !Number.isFinite(value) || value < 0 || value > 0)) ||
+    labelledWindows.some(({ window: w, label }) => demandLabel.test(label) &&
+      (!Number.isFinite(w?.usedPercent) || w.usedPercent > 0)) ||
+    present.some((key) => Number.isFinite(u[key]?.usedPercent) && u[key].usedPercent >= 100)) return result("on_demand_risk");
+  const updated = Date.parse(u?.updatedAt);
+  if (!entry || entry.error || includedUsedPercent === null || !Number.isFinite(now) ||
+    !Number.isFinite(updated) || now - updated > cursorMaxAgeHours * HOUR || updated - now > 5 * 60_000) return result("usage_unknown");
+  return result(includedUsedPercent >= Math.round(cap * 1e6) / 1e4 - 1e-9 ? "at_or_over_cap" : "ok");
 }
 
 /** One pool row: pace plus the routing mode (unavailable, review_only, burn_backlog, build). */
-export function poolFor(provider, entry, now, { cursorCap = CURSOR_INCLUDED_CAP } = {}) {
+export function poolFor(provider, entry, now, { cursorCap = CURSOR_INCLUDED_CAP, cursorMaxAgeHours = CURSOR_MAX_AGE_HOURS } = {}) {
+  provider = providerName(provider);
   if (provider === "cursor") {
-    const eligibility = cursorEligibility(entry, { model: "grok", cap: cursorCap, now });
+    const eligibility = cursorEligibility(entry, { model: "grok", cap: cursorCap, cursorMaxAgeHours, now });
     const { budget, short } = windowsOf(entry, now);
-    const totalKey = ["primary", "secondary", "tertiary"].find((key) => /^total$/i.test(entry?.rateWindowLabels?.[key] ?? "") &&
-      entry?.usage?.[key]?.windowMinutes >= 10080 && paceFor(entry.usage[key], now));
-    const pace = paceFor(totalKey ? entry.usage[totalKey] : budget, now);
+    const totalKey = Object.keys(entry?.rateWindowLabels ?? {}).find((key) => /^total$/i.test(entry.rateWindowLabels[key]));
+    const pace = paceFor(totalKey !== undefined ? entry?.usage?.[totalKey] : budget, now);
     const shortPace = paceFor(short, now);
     const mode = !eligibility.eligible ? eligibility.reason === "usage_unknown" ? "unavailable" : eligibility.reason === "on_demand_risk" ? "on_demand_risk" : "included_cap_reached"
       : pace.hoursToReset <= BURN_WINDOW_HOURS ? "burn_backlog" : "build";
@@ -101,6 +125,7 @@ export function poolFor(provider, entry, now, { cursorCap = CURSOR_INCLUDED_CAP 
     return Object.defineProperties(row, {
       cursorEntry: { value: entry, enumerable: false },
       cursorCheckedAt: { value: now, enumerable: false },
+      cursorCap: { value: cursorCap, enumerable: false },
     });
   }
   if (!entry || entry.error) return { pool: provider, mode: "unavailable", reason: entry?.error?.message?.slice(0, 160) ?? "no data" };
@@ -132,10 +157,16 @@ export function jevPool(lines, now, configured) {
 }
 
 /** The routing decision across pools (see README for the rule text). */
-export function route(pools, { model, cursorCap = CURSOR_INCLUDED_CAP, now } = {}) {
-  const cursor = cursorEligibility(pools.find((p) => p.pool === "cursor"), { model, cap: cursorCap, ...(now === undefined ? {} : { now }) });
-  const live = pools.filter((p) => p.mode !== "unavailable" && !onDemand(p) && (p.pool !== "cursor" || cursor.eligible))
-    .map((p) => p.pool === "cursor" && p.mode === "included_cap_reached" ?
+export function route(pools, { model, cursorCap = CURSOR_INCLUDED_CAP, cursorMaxAgeHours = CURSOR_MAX_AGE_HOURS, now } = {}) {
+  if (!validCap(cursorCap)) throw new Error("cursor cap must be a fraction greater than 0 and at most 1");
+  const isCursor = (p) => providerName(p.pool) === "cursor";
+  const checks = pools.filter(isCursor).map((p) => cursorEligibility(p, {
+    model, cap: Math.min(p.cursorCap ?? cursorCap, cursorCap), cursorMaxAgeHours,
+    ...(now === undefined ? {} : { now }),
+  }));
+  const cursor = checks.find((check) => !check.eligible) ?? checks[0] ?? { eligible: false, reason: "usage_unknown" };
+  const live = pools.filter((p) => p.mode !== "unavailable" && !onDemand(p) && (!isCursor(p) || cursor.eligible))
+    .map((p) => isCursor(p) && p.mode === "included_cap_reached" ?
       { ...p, mode: p.hoursToReset <= BURN_WINDOW_HOURS ? "burn_backlog" : "build" } : p);
   const behindFirst = (a, b) => a.deltaPercent - b.deltaPercent;
   const builders = live.filter((p) => p.mode === "build" && !p.coolingDown).sort(behindFirst);
@@ -161,18 +192,19 @@ const readJsonl = (file) => (file && existsSync(file) ? readFileSync(file, "utf8
 }) : []);
 
 function parseArgs(argv) {
-  const opts = { providers: ["codex", "claude", "cursor"], codexbarJson: [], jevLog: [], jevProbe: false, sources: {}, timeoutS: 40, model: undefined, cursorCap: CURSOR_INCLUDED_CAP, now: Date.now() };
+  const opts = { providers: ["codex", "claude", "cursor"], codexbarJson: [], jevLog: [], jevProbe: false, sources: {}, timeoutS: 40, model: undefined, cursorCap: CURSOR_INCLUDED_CAP, cursorMaxAgeHours: CURSOR_MAX_AGE_HOURS, now: Date.now() };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i];
-    if (a === "--providers") opts.providers = v().split(",");
+    if (a === "--providers") opts.providers = v().split(",").map(providerName);
     else if (a === "--codexbar-json") opts.codexbarJson.push(v());
     else if (a === "--jev-log") opts.jevLog.push(v());
-    else if (a === "--source") { const [p, src] = v().split("="); opts.sources[p] = src; }
+    else if (a === "--source") { const [p, src] = v().split("="); opts.sources[providerName(p)] = src; }
     else if (a === "--jev-probe") opts.jevProbe = true;
     else if (a === "--timeout-s") opts.timeoutS = Number(v());
     else if (a === "--model") opts.model = v();
     else if (a === "--cursor-cap") { opts.cursorCap = Number(v()); if (!validCap(opts.cursorCap)) throw new Error("--cursor-cap must be a fraction greater than 0 and at most 1"); }
-    else if (a === "--now") opts.now = Date.parse(v());
+    else if (a === "--cursor-max-age-h") { opts.cursorMaxAgeHours = Number(v()); if (!validMaxAge(opts.cursorMaxAgeHours)) throw new Error("--cursor-max-age-h must be positive finite hours"); }
+    else if (a === "--now") { opts.now = Date.parse(v()); if (!Number.isFinite(opts.now)) throw new Error("--now must be a parseable finite date"); }
     else throw new Error(`unknown argument ${a}`);
   }
   return opts;
@@ -182,7 +214,7 @@ export async function main(argv = process.argv.slice(2)) {
   const opts = parseArgs(argv);
   const saved = opts.codexbarJson.flatMap((f) => { try { return [JSON.parse(readFileSync(f, "utf8"))].flat(); } catch { return []; } });
   const entries = await Promise.all(opts.providers.map(async (p) => {
-    const fromFiles = saved.filter((e) => e.provider === p && !e.error).sort((a, b) => String(b.usage?.updatedAt).localeCompare(String(a.usage?.updatedAt)))[0];
+    const fromFiles = saved.filter((e) => providerName(e.provider) === p && !e.error).sort((a, b) => String(b.usage?.updatedAt).localeCompare(String(a.usage?.updatedAt)))[0];
     return fromFiles ?? (opts.codexbarJson.length ? null : await codexbar(p, opts.timeoutS, opts.sources[p]));
   }));
   let jev = null, probeError = null;
@@ -199,7 +231,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const pools = opts.providers.map((p, i) => poolFor(p, entries[i], opts.now, opts));
   const jevRow = { ...jevPool(opts.jevLog.flatMap(readJsonl), opts.now, jev?.isJevConfigured() ?? false), probeError };
-  const report = { generatedAt: new Date(opts.now).toISOString(), jev: jevRow, pools, routing: { jevFirst: jevRow.mode === "first", model: opts.model ?? null, cursorCap: opts.cursorCap, ...route(pools, opts) } };
+  const report = { generatedAt: new Date(opts.now).toISOString(), jev: jevRow, pools, routing: { jevFirst: jevRow.mode === "first", model: opts.model ?? null, cursorCap: opts.cursorCap, cursorMaxAgeHours: opts.cursorMaxAgeHours, ...route(pools, opts) } };
   console.log(JSON.stringify(report, null, 2));
   return report;
 }
