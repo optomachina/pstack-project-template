@@ -90,7 +90,7 @@ jobs:
           # sensitive. Same inputs as ci.yml otherwise, so the tiers agree.
           node "$RUNNER_TEMP/gate/scripts/review-gate.mjs" --root . --base-ref HEAD^1 --no-jev \
             --changed-files-from "$RUNNER_TEMP/changed.z" --numstat-from "$RUNNER_TEMP/numstat.txt" \
-            --title="$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json"
+            --title "$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json"
           node "$RUNNER_TEMP/gate/scripts/check-pr-body.mjs" --body-file "$RUNNER_TEMP/pr-body.md" \
             --review-gate-json "$RUNNER_TEMP/review-gate.json"
 

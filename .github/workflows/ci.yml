@@ -172,7 +172,7 @@ jobs:
           set -uo pipefail
           node "$RUNNER_TEMP/gate/scripts/review-gate.mjs" --root . --base-ref HEAD^1 \
             --changed-files-from "$RUNNER_TEMP/changed.z" --numstat-from "$RUNNER_TEMP/numstat.txt" \
-            --title="$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json" | tee "$RUNNER_TEMP/review.txt" \
+            --title "$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json" | tee "$RUNNER_TEMP/review.txt" \
             || echo "::warning title=Review gate::review gate exited non-zero (report mode, not failing)"
           { echo '### Review gate'; echo '```'; cat "$RUNNER_TEMP/review.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
