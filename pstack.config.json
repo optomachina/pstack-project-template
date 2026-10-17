@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "project": {
+    "name": "{{PROJECT}}",
+    "owner": "{{OWNER}}",
+    "defaultBranch": "main"
+  },
+  "preflight": {
+    "stages": ["typecheck", "lint", "test", "build"],
+    "required": ["test"]
+  },
+  "prSize": {
+    "maxChangedLines": 200,
+    "exclude": ["**/package-lock.json", "**/*.snap", "**/fixtures/**", "**/generated/**"]
+  },
+  "journeyTests": {
+    "userVisible": [
+      "src/components/**",
+      "src/pages/**",
+      "src/app/**",
+      "src/features/**",
+      "src/routes/**",
+      "src/views/**",
+      "app/**",
+      "pages/**",
+      "**/*.{css,scss,sass,less}",
+      "public/**"
+    ],
+    "exclude": [
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/*.stories.*",
+      "**/__tests__/**",
+      "**/__mocks__/**"
+    ],
+    "journeyTests": ["e2e/journeys/**", "tests/journeys/**"],
+    "naPrefix": "Journey test: N/A - "
+  },
+  "review": {
+    "jevMinConfidence": 0.5
+  },
+  "autoMerge": {
+    "enabled": true,
+    "excludeKeywords": ["auth", "session", "permission", "billing", "pricing", "payment", "checkout", "stripe", "dispatch", "secret", "credential", "token"],
+    "categories": [
+      {
+        "id": "docs",
+        "label": "Docs",
+        "include": ["*.md", "docs/**"],
+        "exclude": ["docs/sensitive-paths.json", "AGENTS.md", "CLAUDE.md"]
+      },
+      {
+        "id": "tests",
+        "label": "Tests only",
+        "include": ["**/*.test.{ts,tsx,js,jsx,mjs,cjs}", "**/*.spec.{ts,tsx,js,jsx,mjs,cjs}", "e2e/**", "tests/**", "**/__tests__/**"],
+        "exclude": ["**/*.sql"]
+      },
+      {
+        "id": "frontend_ui",
+        "label": "Frontend UI",
+        "include": ["src/components/**", "src/pages/**", "src/features/**", "src/app/**"],
+        "exclude": []
+      },
+      {
+        "id": "styles_assets",
+        "label": "Styles and static assets",
+        "include": ["**/*.{css,scss,sass,less}", "public/**", "src/assets/**"],
+        "exclude": []
+      },
+      {
+        "id": "repo_scripts",
+        "label": "Repo scripts",
+        "include": ["scripts/**"],
+        "exclude": ["scripts/deploy*{,/**}", "scripts/release*{,/**}"]
+      },
+      {
+        "id": "agent_skills",
+        "label": "Agent skills and prompts",
+        "include": [".claude/agents/**", ".claude/skills/**", ".codex/skills/**", ".agents/skills/**"],
+        "exclude": []
+      }
+    ]
+  }
+}
