@@ -15,13 +15,14 @@
  *
  *   node scripts/usage-balancer/usage-balancer.mjs [--providers codex,claude,cursor]
  *     [--source claude=web]... [--codexbar-json f]... [--jev-log f]... [--jev-probe]
- *     [--timeout-s 40] [--now ISO]
+ *     [--timeout-s 40] [--now ISO] [--model grok-4.6] [--cursor-cap 0.90]
  */
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+export const CURSOR_INCLUDED_CAP = 0.90;
 export const REVIEW_ONLY_PERCENT = 90;
 export const BURN_WINDOW_HOURS = 24;
 export const ON_PACE_BAND = 3; // percentage points
@@ -55,8 +56,53 @@ export function windowsOf(entry, now = Date.now()) {
   return { budget, short };
 }
 
+/** Only an explicit Grok token authorizes Cursor model billing. */
+export const isGrokModel = (model) => typeof model === "string" && /(?:^|[^a-z0-9])grok(?:$|[^a-z])/i.test(model);
+const validCap = (cap) => Number.isFinite(cap) && cap > 0 && cap <= 1;
+const onDemand = (row) => row?.onDemand === true || /^(cursor[-_]on[-_]demand|on[-_]demand)$/i.test(row?.pool ?? "") || /on[-_ ]demand|usage[-_ ]based/i.test(`${row?.mode ?? ""} ${row?.billing ?? ""}`);
+const positiveSpend = (value) => value && typeof value === "object" && Object.entries(value).some(([key, v]) =>
+  typeof v === "object" ? positiveSpend(v) : /used|spend|spent|cost|amount/i.test(key) && Number(v) > 0);
+
+/** Included allowance only; retain the original windows on pool rows for rechecking. */
+export function cursorEligibility(row, { model, cap = CURSOR_INCLUDED_CAP, now = row?.cursorCheckedAt ?? Date.now() } = {}) {
+  if (!validCap(cap)) throw new Error("cursor cap must be a fraction greater than 0 and at most 1");
+  const entry = row?.cursorEntry ?? row;
+  const u = entry?.usage;
+  const windows = ["primary", "secondary", "tertiary"].flatMap((key) => {
+    const w = u?.[key];
+    return w && Number.isFinite(w.windowMinutes) && w.windowMinutes >= 10080 && w.usedPercent >= 0 && paceFor(w, now) ? [{ key, ...w }] : [];
+  });
+  const total = windows.find((w) => /^total$/i.test(entry?.rateWindowLabels?.[w.key] ?? ""));
+  const includedUsedPercent = total?.usedPercent ?? (windows.length ? Math.max(...windows.map((w) => w.usedPercent)) : null);
+  const result = (reason) => ({ eligible: reason === "ok", reason, includedUsedPercent, capPercent: cap * 100 });
+  if (typeof model !== "string" || !model.trim()) return result("model_unknown");
+  if (!isGrokModel(model)) return result("non_grok_model");
+  if (onDemand(row) || positiveSpend(u?.providerCost) || Object.entries(u ?? {}).some(([key, value]) =>
+    /on[-_]?demand|usage[-_]?based/i.test(key) && (Number(value) > 0 || positiveSpend(value))) || windows.some((w) => w.usedPercent >= 100)) return result("on_demand_risk");
+  if (!entry || entry.error || includedUsedPercent === null) return result("usage_unknown");
+  return result(includedUsedPercent >= cap * 100 ? "at_or_over_cap" : "ok");
+}
+
 /** One pool row: pace plus the routing mode (unavailable, review_only, burn_backlog, build). */
-export function poolFor(provider, entry, now) {
+export function poolFor(provider, entry, now, { cursorCap = CURSOR_INCLUDED_CAP } = {}) {
+  if (provider === "cursor") {
+    const eligibility = cursorEligibility(entry, { model: "grok", cap: cursorCap, now });
+    const { budget, short } = windowsOf(entry, now);
+    const totalKey = ["primary", "secondary", "tertiary"].find((key) => /^total$/i.test(entry?.rateWindowLabels?.[key] ?? "") &&
+      entry?.usage?.[key]?.windowMinutes >= 10080 && paceFor(entry.usage[key], now));
+    const pace = paceFor(totalKey ? entry.usage[totalKey] : budget, now);
+    const shortPace = paceFor(short, now);
+    const mode = !eligibility.eligible ? eligibility.reason === "usage_unknown" ? "unavailable" : eligibility.reason === "on_demand_risk" ? "on_demand_risk" : "included_cap_reached"
+      : pace.hoursToReset <= BURN_WINDOW_HOURS ? "burn_backlog" : "build";
+    const row = { pool: provider, plan: entry?.usage?.loginMethod ?? null, source: entry?.source ?? null,
+      updatedAt: entry?.usage?.updatedAt ?? null, ...pace, coolingDown: shortPace ? shortPace.usedPercent >= REVIEW_ONLY_PERCENT : false,
+      fiveHour: shortPace, mode, reason: eligibility.reason,
+      includedUsedPercent: eligibility.includedUsedPercent, capPercent: eligibility.capPercent };
+    return Object.defineProperties(row, {
+      cursorEntry: { value: entry, enumerable: false },
+      cursorCheckedAt: { value: now, enumerable: false },
+    });
+  }
   if (!entry || entry.error) return { pool: provider, mode: "unavailable", reason: entry?.error?.message?.slice(0, 160) ?? "no data" };
   const { budget, short } = windowsOf(entry, now);
   const pace = paceFor(budget, now);
@@ -86,13 +132,16 @@ export function jevPool(lines, now, configured) {
 }
 
 /** The routing decision across pools (see README for the rule text). */
-export function route(pools) {
-  const live = pools.filter((p) => p.mode !== "unavailable");
+export function route(pools, { model, cursorCap = CURSOR_INCLUDED_CAP, now } = {}) {
+  const cursor = cursorEligibility(pools.find((p) => p.pool === "cursor"), { model, cap: cursorCap, ...(now === undefined ? {} : { now }) });
+  const live = pools.filter((p) => p.mode !== "unavailable" && !onDemand(p) && (p.pool !== "cursor" || cursor.eligible))
+    .map((p) => p.pool === "cursor" && p.mode === "included_cap_reached" ?
+      { ...p, mode: p.hoursToReset <= BURN_WINDOW_HOURS ? "burn_backlog" : "build" } : p);
   const behindFirst = (a, b) => a.deltaPercent - b.deltaPercent;
   const builders = live.filter((p) => p.mode === "build" && !p.coolingDown).sort(behindFirst);
   const burn = live.filter((p) => p.mode === "burn_backlog").sort(behindFirst);
   const fallback = burn.filter((p) => !p.coolingDown);
-  return { newBuildPool: builders[0]?.pool ?? fallback[0]?.pool ?? null, buildOrder: builders.map((p) => p.pool),
+  return { cursorEligible: cursor.eligible, cursorReason: cursor.reason, cursorExcluded: !cursor.eligible, newBuildPool: builders[0]?.pool ?? fallback[0]?.pool ?? null, buildOrder: builders.map((p) => p.pool),
     burnBacklogPools: burn.map((p) => p.pool), reviewOnlyPools: live.filter((p) => p.mode === "review_only").map((p) => p.pool),
     coolingDownPools: live.filter((p) => p.coolingDown).map((p) => p.pool), unavailablePools: pools.filter((p) => p.mode === "unavailable").map((p) => p.pool) };
 }
@@ -112,7 +161,7 @@ const readJsonl = (file) => (file && existsSync(file) ? readFileSync(file, "utf8
 }) : []);
 
 function parseArgs(argv) {
-  const opts = { providers: ["codex", "claude", "cursor"], codexbarJson: [], jevLog: [], jevProbe: false, sources: {}, timeoutS: 40, now: Date.now() };
+  const opts = { providers: ["codex", "claude", "cursor"], codexbarJson: [], jevLog: [], jevProbe: false, sources: {}, timeoutS: 40, model: undefined, cursorCap: CURSOR_INCLUDED_CAP, now: Date.now() };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i];
     if (a === "--providers") opts.providers = v().split(",");
@@ -121,6 +170,8 @@ function parseArgs(argv) {
     else if (a === "--source") { const [p, src] = v().split("="); opts.sources[p] = src; }
     else if (a === "--jev-probe") opts.jevProbe = true;
     else if (a === "--timeout-s") opts.timeoutS = Number(v());
+    else if (a === "--model") opts.model = v();
+    else if (a === "--cursor-cap") { opts.cursorCap = Number(v()); if (!validCap(opts.cursorCap)) throw new Error("--cursor-cap must be a fraction greater than 0 and at most 1"); }
     else if (a === "--now") opts.now = Date.parse(v());
     else throw new Error(`unknown argument ${a}`);
   }
@@ -146,9 +197,9 @@ export async function main(argv = process.argv.slice(2)) {
       appendFileSync(opts.jevLog[0], JSON.stringify({ ts: new Date(opts.now).toISOString(), kind: "usage_balancer_probe", ok: r.ok, reason: r.ok ? null : r.reason, usage: r.usage ?? null, latencyMs: r.latencyMs }) + "\n");
     } catch (error) { probeError = `probe_failed_${error?.code ?? "error"}`; }
   }
-  const pools = opts.providers.map((p, i) => poolFor(p, entries[i], opts.now));
+  const pools = opts.providers.map((p, i) => poolFor(p, entries[i], opts.now, opts));
   const jevRow = { ...jevPool(opts.jevLog.flatMap(readJsonl), opts.now, jev?.isJevConfigured() ?? false), probeError };
-  const report = { generatedAt: new Date(opts.now).toISOString(), jev: jevRow, pools, routing: { jevFirst: jevRow.mode === "first", ...route(pools) } };
+  const report = { generatedAt: new Date(opts.now).toISOString(), jev: jevRow, pools, routing: { jevFirst: jevRow.mode === "first", model: opts.model ?? null, cursorCap: opts.cursorCap, ...route(pools, opts) } };
   console.log(JSON.stringify(report, null, 2));
   return report;
 }
