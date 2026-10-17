@@ -6886,6 +6886,23 @@ const REVIEW_COVERAGE = freeze({
 });
 const cloneJSON = value => JSON.parse(canonicalJSON(value));
 
+/** Reserved unknown observations cannot stand in for a selected or effective identity. */
+export function isKnownRoutingValue(value) {
+  return typeof value === 'string' && value.length > 0 && !/^unknown$/i.test(value);
+}
+
+function originalV2EvidenceProblem(catalog, context) {
+  if (catalog.entries.some(entry => ['provider', 'model', 'family'].some(k => !isKnownRoutingValue(entry[k])) ||
+      entry.supportedEfforts.some(value => !isKnownRoutingValue(value)))) return 'unknown_catalog_identity';
+  for (const proof of context.evidence) {
+    if (!['capability', 'availability', 'entitlement'].includes(proof.kind)) continue;
+    const entry = catalog.entries.find(e => e.id === proof.scope);
+    if (!entry || proof.digest !== digest(entry)) return 'invalid_original_entry_evidence';
+  }
+  return null;
+}
+
+
 function v2Blocked(reason) {
   return freeze({ ...resolveRouting(null), schema: 'model-routing.receipt.v2', reason,
     artifactDigest: null, diffDigest: null, policyRevision: null, catalogRevision: null, fallbackEvidence: [] });
@@ -6903,6 +6920,8 @@ function checkV2Input(input) {
   const { policy: p, catalog: c, trustedContext: t, request: r } = input;
   if (t.policyDigest !== digest(p) || t.catalogDigest !== digest(c) || p.catalogDigest !== digest(c) ||
       bindingKeys.some(k => !equal(r[k], t[k]))) return 'digest_or_context_mismatch';
+  const evidenceProblem = originalV2EvidenceProblem(c, t);
+  if (evidenceProblem) return evidenceProblem;
   if (t.reviewSubject.kind === 'existing_artifact' && t.reviewSubject.artifactDigest !== t.artifactDigest) return 'review_subject_mismatch';
   if (new Set(p.reviewRules.map(x => x.risk)).size !== 3 || p.reviewRules.length !== 3) return 'ambiguous_review_rules';
   for (const rule of p.reviewRules) {
@@ -6938,8 +6957,10 @@ function projectV2(input) {
   delete t.reviewSubject; delete t.artifactDigest; delete t.diffDigest;
   for (const proof of t.evidence) {
     delete proof.failure;
-    const old = input.catalog.entries.find(e => e.id === proof.scope);
-    if (old && proof.digest === digest(old)) proof.digest = digest(p.catalog.entries.find(e => e.id === old.id));
+    // Only fully bound entry proofs validated above may enter the v1 projection.
+    if (['capability', 'availability', 'entitlement'].includes(proof.kind)) {
+      proof.digest = digest(p.catalog.entries.find(e => e.id === proof.scope));
+    }
   }
   p.policy.catalogDigest = digest(p.catalog);
   t.catalogDigest = p.policy.catalogDigest; t.policyDigest = digest(p.policy);

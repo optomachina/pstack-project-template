@@ -35,6 +35,7 @@ export function validateReviewTransition({transition,authorization,expected,poli
     authorization.sourceReviewDigest!==transition.sourceReviewDigest)return false;
   if(!sourceReview||transition.sourceReviewDigest!==digest(sourceReview)||
     validateReviewCompletions({...sourceReview,now}).status!=='accepted'||
+    sourceReview.plan.binding.repoId!==transition.repoId||
     sourceReview.plan.binding.sourceSha!==transition.headSha||sourceReview.plan.binding.baseSha!==transition.baseSha||
     sourceReview.plan.diffDigest!==transition.patchDigest||
     !sourceReview.receipts.some(r=>r.observed.provider==='openai'&&r.observed.model==='gpt-6-astra'&&

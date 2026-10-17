@@ -313,11 +313,13 @@ export async function runReviewGateV2({root,baseRef,headRef='HEAD',files,gate={s
     // The adoption head must already belong to this committed base history.
     const {execFileSync}=await import('node:child_process');
     execFileSync('git',['merge-base','--is-ancestor',adoption.transition.headSha,baseRef],{cwd:root,stdio:'pipe'});
-    const revisionIssue=checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execFileSync,digest);
-    if(revisionIssue)return fail(revisionIssue);
+    const revision=checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execFileSync,digest);
+    if(typeof revision==='string')return fail(revision);
     const sensitiveText=readRefFile(root,baseRef,SENSITIVE_PATHS_FILE), configText=readRefFile(root,baseRef,PSTACK_CONFIG_FILE);
     if(sensitiveText===null||configText===null)return fail('base_configuration_missing');
-    const d=decide({files,sensitivePaths:parseSensitivePaths(sensitiveText),pstackConfig:parsePstackConfig(configText),gate,changedLines});
+    const pstackConfig=parsePstackConfig(configText);
+    const d=decide({files:revision.files,sensitivePaths:parseSensitivePaths(sensitiveText),pstackConfig,gate,
+      changedLines:countChangedLines(revision.numstat,pstackConfig.prSize?.exclude??[])});
     const risk={low:'low',normal:'moderate',risky:'high'}[d.risk];
     const obligations=loaded.policy.reviewRules.find(r=>r.risk===risk)?.slots;
     if(!obligations)return fail('missing_risk_rule');
@@ -345,9 +347,13 @@ function checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execF
     const patch=digest(git('diff','--binary','--no-ext-diff',base,head));
     const adoptionPatch=digest(git('diff','--binary','--no-ext-diff',adoption.transition.baseSha,adoption.transition.headSha));
     if(adoption.transition.patchDigest!==adoptionPatch)return 'transition_patch_mismatch';
+    if(routingInput&&['policy','trustedContext','request'].some(k=>routingInput[k]?.repoId!==adoption.transition.repoId))return 'repository_binding_mismatch';
     if(routingInput&&(routingInput.trustedContext?.sourceSha!==head||routingInput.trustedContext?.baseSha!==base||
       routingInput.trustedContext?.diffDigest!==patch||routingInput.trustedContext?.artifactDigest!==digest({treeSha})))return 'stale_revision_binding';
-    return null;
+    // Disabling rename detection retains deleted sources and added destinations.
+    const files=git('diff','--name-only','-z','--no-renames','--no-ext-diff',base,head).split('\0').filter(Boolean);
+    const numstat=git('diff','--numstat','--no-renames','--no-ext-diff',base,head);
+    return {files,numstat};
 }
 
 function blockedCapabilityGate(reason) {

@@ -66,3 +66,12 @@ test('one valid receipt cannot occupy both required slots',()=>{
   const x=completionFixture();x.receipts[1]=structuredClone(x.receipts[0]);
   assert.equal(validateReviewCompletions(x).reason,'duplicate_or_missing_review');
 });
+for(const field of ['provider','model','family'])for(const value of ['unknown','UNKNOWN'])test(`TR1 matching ${value} ${field} is not known completion identity`,()=>{
+  const x=structuredClone(completionFixture());
+  x.plan.reviewPlans[0].selection[field]=value;
+  for(const stage of ['requested','selected','emitted','observed'])x.receipts[0][stage][field]=value;
+  x.trustedContext.expected.planDigest=digest(x.plan);
+  for(const receipt of x.receipts)receipt.planDigest=x.trustedContext.expected.planDigest;
+  for(const proof of x.trustedContext.observations){const receipt=x.receipts.find(r=>r.id===proof.receiptId);proof.identity={...receipt.observed};proof.receiptDigest=digest(receipt);}
+  assert.equal(validateReviewCompletions(x).status,'blocked');
+});

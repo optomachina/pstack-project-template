@@ -101,3 +101,38 @@ test('routing graph cannot replace base independence predicates',()=>{
   x.routingInput.policy.reviewRules[2].slots[0].crossFamily=true;rebindV2(x.routingInput);
   assert.equal(matchesBaseReviewPolicy(base,x.routingInput),false);
 });
+
+function bindCurrentRevision(x) {
+  const f=x.routingInput,t=f.trustedContext,head=git(x.root,'rev-parse','HEAD');
+  t.sourceSha=head;t.reviewSubject.sourceSha=head;
+  t.artifactDigest=digest({treeSha:git(x.root,'rev-parse',`${head}^{tree}`)});t.reviewSubject.artifactDigest=t.artifactDigest;
+  t.diffDigest=digest(execFileSync('git',['diff','--binary','--no-ext-diff',x.baseRef,head],{cwd:x.root,encoding:'utf8'}));
+  rebindV2(f);x.completion=completionFixture(f);
+}
+test('TR1 committed workflow cannot be hidden behind caller README and low risk',async()=>{
+  const x=governedFixture();write(x.root,'.github/workflows/security.yml','name: security\n');git(x.root,'add','.');git(x.root,'commit','-qm','security change');
+  x.routingInput.trustedContext.risk='low';x.routingInput.policy.rules[0].risk='low';bindCurrentRevision(x);
+  x.files=['README.md'];x.changedLines=0;x.gate={status:'accepted',choice:'low',confidence:0.99};
+  const d=await runReviewGateV2(x);assert.equal(d.auto_merge.eligible,false);assert.equal(d.status,'blocked');assert.equal(d.risk,'risky');assert.equal(d.obligations.length,2);
+});
+test('TR1 genuine sensitive review derives file inventory and size from bound revisions',async()=>{
+  const x=governedFixture();write(x.root,'.github/workflows/security.yml','name: security\n');git(x.root,'add','.');git(x.root,'commit','-qm','security change');bindCurrentRevision(x);
+  x.files=['README.md'];x.changedLines=0;
+  const d=await runReviewGateV2(x);assert.equal(d.status,'consistent');assert.equal(d.risk,'risky');
+  assert.ok(d.sensitive.files.some(f=>f.path==='.github/workflows/security.yml'));assert.equal(d.pr_size.changed_lines,1);
+});
+for(const action of ['delete','rename'])test('TR1 derives sensitive '+action+' source paths',async()=>{
+  const x=governedFixture();
+  if(action==='delete')git(x.root,'rm','scripts/jev-client.mjs');else git(x.root,'mv','scripts/jev-client.mjs','docs/retired-client.md');
+  git(x.root,'commit','-qm',action+' sensitive source');bindCurrentRevision(x);x.files=['docs/retired-client.md'];x.changedLines=0;
+  const d=await runReviewGateV2(x);assert.equal(d.status,'consistent');assert.equal(d.risk,'risky');
+  assert.ok(d.sensitive.files.some(f=>f.path==='scripts/jev-client.mjs'));assert.equal(d.files,action==='rename'?2:1);assert.ok(d.pr_size.changed_lines>0);
+});
+test('TR1 source review cannot authorize another repository with the same Git history',()=>{
+  const x=governedFixture();x.adoption.transition.repoId='other-repo';x.adoption.expected.repoId='other-repo';x.adoption.authorization.transitionDigest=digest(x.adoption.transition);
+  assert.equal(validateReviewTransition({...x.adoption,policy:x.policy,now:x.now}),false);
+});
+test('TR1 routing repository must equal the authenticated adoption target',async()=>{
+  const x=governedFixture();x.routingInput.policy.repoId='other-repo';x.routingInput.trustedContext.repoId='other-repo';rebindV2(x.routingInput);x.completion=completionFixture(x.routingInput);
+  assert.equal((await runReviewGateV2(x)).status,'blocked');
+});

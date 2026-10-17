@@ -233,6 +233,10 @@ for entry ID, and their evidence is separately scoped. This permits two independ
 Astra sessions for two required slots without inventing different model families.
 The projection into shared v1 checks is internal: original input/entry digests are
 validated before projection and original digests are preserved in v2 receipts.
+Every supplied capability, availability and entitlement proof must bind the complete
+original entry, including review capabilities and coverage; a projected-entry hash
+is rejected. Catalog and completion identities reject case-insensitive `unknown`
+provider, model, family and effort values even when all declarations agree.
 
 `validateReviewCompletions` consumes a v2 plan, strict completion receipts and a
 separate strict authenticated-controller context. Acceptance means the supplied
@@ -269,6 +273,11 @@ identity (`git diff --binary --no-ext-diff base head`, including its final newli
 Its adoption patch uses that same diff convention. The generic pure planner still
 accepts authenticated caller artifact digests; the template gate fixes a concrete
 Git convention. Working-tree changes are not a substitute for a committed head.
+The gate derives the complete file inventory and line counts from those committed
+revisions, ignoring caller file/size hints. Rename detection is disabled so deleted
+and renamed sensitive source paths remain classified. Base configuration supplies
+size exclusions. Source-review repository identity must equal the transition
+target, and current policy, context and request must bind that same repository.
 
 The template CLI's v1 lane remains compatible. `--contract v2` blocks without the
 separate authenticated adoption/completion package; live CI transport/admission is

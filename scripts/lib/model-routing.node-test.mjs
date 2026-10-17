@@ -436,3 +436,14 @@ test('v2 extra project obligations require and preserve an additional distinct r
   for(const e of f.trustedContext.evidence)if(e.scope==='audit-entry')e.executionId='deep-1';
   assert.equal(routeV2(f).status,'blocked');
 });
+
+for(const kind of ['capability','availability','entitlement'])test('TR1 rejects stripped original v2 '+kind+' evidence',()=>{
+  const f=fixturesV2.fixtureV2(),entry=structuredClone(f.catalog.entries.find(e=>e.id==='review-entry'));
+  delete entry.reviewCapabilities;delete entry.reviewCoverage;
+  f.trustedContext.evidence.find(e=>e.kind===kind&&e.scope===entry.id).digest=digest(entry);
+  assert.equal(routeV2(f).status,'blocked');
+});
+for(const field of ['provider','model','family'])for(const value of ['unknown','UNKNOWN'])test(`TR1 planning rejects matching ${value} ${field}`,()=>{
+  const f=fixturesV2.fixtureV2();f.catalog.entries.find(e=>e.id==='review-entry')[field]=value;
+  fixturesV2.rebindV2(f);assert.equal(routeV2(f).status,'blocked');
+});

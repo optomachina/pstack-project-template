@@ -1,13 +1,15 @@
-import { canonicalJSON, digest, validateV2 } from './model-routing.mjs';
+import { canonicalJSON, digest, validateV2, isKnownRoutingValue } from './model-routing.mjs';
 const same = (a, b) => canonicalJSON(a) === canonicalJSON(b);
 const dimensions = ['tokens', 'wallTimeMs', 'attempts'];
 const blocked = reason => Object.freeze({status:'blocked', reason, acceptedReceiptIds:[]});
+const knownIdentity = identity => ['provider','model','family','effort'].every(k => isKnownRoutingValue(identity?.[k]));
 
 function receiptMatchesPlan(receipt, plan, expected) {
   const review = plan.reviewPlans.find(r => r.obligationId === receipt.slotId);
   if (!review || Object.keys(expected).some(k => receipt[k] !== expected[k])) return false;
   const s = review.selection;
   const identity = {provider:s.provider, model:s.model, family:s.family, effort:s.plannedEmission.value};
+  if (!knownIdentity(identity) || !['requested','selected','emitted','observed'].every(k => knownIdentity(receipt[k]))) return false;
   return receipt.policyRevision === plan.policyRevision && receipt.catalogRevision === plan.catalogRevision &&
     same(receipt.subject, review.subject) && receipt.subject.kind === 'existing_artifact' &&
     same(receipt.authors, review.independenceAuthors) && receipt.executionId === s.executionId &&
@@ -19,7 +21,7 @@ function receiptMatchesPlan(receipt, plan, expected) {
 
 function validObservation(receipt, context, time) {
   const proof = context.observations.find(p => p.receiptId === receipt.id);
-  return proof && proof.receiptDigest === digest(receipt) && proof.reference === receipt.observationRef &&
+  return proof && knownIdentity(proof.identity) && proof.receiptDigest === digest(receipt) && proof.reference === receipt.observationRef &&
     proof.issuer === receipt.issuer && proof.executionId === receipt.executionId &&
     same(proof.identity, receipt.observed) && proof.resultDigest === receipt.resultDigest &&
     Date.parse(receipt.startedAt) <= Date.parse(receipt.completedAt) && Date.parse(receipt.completedAt) <= time &&
