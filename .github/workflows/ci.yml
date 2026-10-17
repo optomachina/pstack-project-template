@@ -1,0 +1,208 @@
+name: CI
+
+# Managed by the pstack template. Edit only inside project:begin/end blocks.
+#
+# Jobs:
+#   preflight       scripts/preflight.sh, the same stages agents run locally.
+#   agent-contract  AGENTS.md vs docs/sensitive-paths.json parity and required rules.
+#   pr-gates        pull_request only: sensitive-paths report (report only),
+#                   review gate (tier + auto-merge eligibility, report only) and
+#                   the journey-test rule (enforced). These run the BASE copy of
+#                   the gate scripts and configs, so a PR cannot edit its own gate.
+#   ci              aggregate job; make "ci" the required check.
+#
+# The journey-test step reads the PR body through the API when it runs. After
+# adding a "Journey test: N/A - <reason>" line, re-run the failed jobs
+# (gh run rerun <run-id> --failed); a body edit does not re-trigger this
+# workflow, on purpose, so review bots editing bodies do not rerun CI.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Install failures happen before any stage starts: they are infra
+      # failures and are re-run, never fixed with code (AGENTS.md).
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+
+      # <!-- project:begin preflight-setup -->
+      # Project-specific setup (databases, browsers, services) goes here.
+      # <!-- project:end preflight-setup -->
+
+      - name: Preflight
+        run: bash scripts/preflight.sh
+
+  agent-contract:
+    name: agent-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate agent contract
+        run: node scripts/validate-agent-contract.mjs
+
+      - name: AGENTS.md sensitive list is rendered from the JSON
+        run: node scripts/lib/sensitive-paths.mjs render-agents --check
+
+  pr-gates:
+    name: pr-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # No job-level if: a skipped job never reports success to a required check.
+    steps:
+      - name: Not a pull request
+        if: github.event_name != 'pull_request'
+        run: echo "${{ github.event_name }} run; PR gates run on pull_request events."
+
+      # pull_request checks out the merge of the PR head into the current base
+      # tip, so HEAD^1 is the base as merged.
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Setup Node.js
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The gate scripts are dependency-free, so the base copy runs without an install.
+      - name: Prepare gate from base
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          gate="$RUNNER_TEMP/gate"
+          files="scripts/lib/sensitive-paths.mjs scripts/lib/pstack-config.mjs scripts/sensitive-paths-report.mjs scripts/jev-client.mjs scripts/review-gate.mjs scripts/check-journey-tests.mjs"
+          source=base
+          for file in $files; do
+            git cat-file -e "HEAD^1:$file" 2>/dev/null || source=head
+          done
+          for file in $files; do
+            mkdir -p "$gate/$(dirname "$file")"
+            if [ "$source" = base ]; then git show "HEAD^1:$file" > "$gate/$file"; else cp "$file" "$gate/$file"; fi
+          done
+          echo "Gate scripts taken from: $source"
+          git diff --name-status -z --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.z"
+          git diff --numstat --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/numstat.txt"
+
+      - name: Sensitive paths report (report only)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -uo pipefail
+          node "$RUNNER_TEMP/gate/scripts/sensitive-paths-report.mjs" --root . --base-ref HEAD^1 --json-out "$RUNNER_TEMP/sensitive-paths-report.json" | tee "$RUNNER_TEMP/sensitive.txt" \
+            || echo "::warning title=Sensitive paths::report exited non-zero (report mode, not failing)"
+          { echo '### Sensitive paths (report only)'; echo '```'; cat "$RUNNER_TEMP/sensitive.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Jev is optional: set the JEV_ENDPOINT (and JEV_API_KEY) repository
+      # secrets to enable it. Without them, or on fork PRs, the client is inert
+      # and low-risk PRs get Sonnet review instead of Jev-only.
+      - name: Review gate (report only)
+        if: github.event_name == 'pull_request'
+        env:
+          JEV_ENDPOINT: ${{ secrets.JEV_ENDPOINT }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -uo pipefail
+          node "$RUNNER_TEMP/gate/scripts/review-gate.mjs" --root . --base-ref HEAD^1 \
+            --changed-files-from "$RUNNER_TEMP/changed.z" --numstat-from "$RUNNER_TEMP/numstat.txt" \
+            --title "$PR_TITLE" --json-out "$RUNNER_TEMP/review-gate.json" | tee "$RUNNER_TEMP/review.txt"
+          { echo '### Review gate'; echo '```'; cat "$RUNNER_TEMP/review.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Journey tests
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Fresh body (the event payload is stale after an edit and a re-run).
+          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
+          node "$RUNNER_TEMP/gate/scripts/check-journey-tests.mjs" --root . --base-ref HEAD^1 \
+            --changed-files-from "$RUNNER_TEMP/changed.z" --body-file "$RUNNER_TEMP/pr-body.md" \
+            --json-out "$RUNNER_TEMP/journey-tests.json" | tee "$RUNNER_TEMP/journey.txt"
+
+      - name: Journey summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f "$RUNNER_TEMP/journey.txt" ]; then
+            { echo '### Journey tests'; echo '```'; cat "$RUNNER_TEMP/journey.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload gate reports
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-gate-reports
+          path: |
+            ${{ runner.temp }}/sensitive-paths-report.json
+            ${{ runner.temp }}/review-gate.json
+            ${{ runner.temp }}/journey-tests.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # <!-- project:begin extra-jobs -->
+  # Project-specific jobs (browser journeys, integration tests) go here; add
+  # each to `needs` and to the result check of the ci job below.
+  # <!-- project:end extra-jobs -->
+
+  ci:
+    name: ci
+    if: always()
+    needs: [preflight, agent-contract, pr-gates]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check dependency results
+        env:
+          PREFLIGHT: ${{ needs.preflight.result }}
+          AGENT_CONTRACT: ${{ needs.agent-contract.result }}
+          PR_GATES: ${{ needs.pr-gates.result }}
+        run: |
+          echo "preflight=$PREFLIGHT agent-contract=$AGENT_CONTRACT pr-gates=$PR_GATES"
+          # Skipped, cancelled and failed all block: none of them is a pass.
+          for result in "$PREFLIGHT" "$AGENT_CONTRACT" "$PR_GATES"; do
+            [ "$result" = success ] || exit 1
+          done
