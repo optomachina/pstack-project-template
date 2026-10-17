@@ -41,7 +41,7 @@ bytes or infer authors from Git. The request cannot redefine subjects or authors
 
 For either subject, required execution/family independence is checked against
 `writer` and every `existingContributors` identity. For planned output, it is also
-checked against `context.execution`, the new producer. Every eligible main candidate
+checked against `context.execution`, the new producer. Every eligible worker candidate
 must exactly match that pinned execution ID/provider/family before the resolver can
 return `planned`, so this includes the selected producer even when the prior author
 differs. For an existing artifact, the current reviewing execution is not treated
@@ -193,7 +193,7 @@ blanket treatment of the current reviewer as an existing-artifact author must al
 fail the positive cases. The original head's passing tests did not cover this defect.
 
 Repair round 2 covers `latest` tokens across every allowed delimiter, at either
-end or in the middle, for both main and review entries and mixed letter case.
+end or in the middle, for both worker and review entries and mixed letter case.
 Pinned identifiers and non-token substrings remain accepted. Reinstating the old
 incomplete delimiter check must make these alias regressions fail.
 
@@ -253,3 +253,25 @@ failed attempts), unchanged-or-tighter ceilings and inherited counters. Submitte
 receipt usage is added once for this batch; the controller must atomically consume
 it and persist replay IDs after acceptance. Neither planning nor this validator
 reserves resources. The 19 original runtime integration deferrals remain open.
+
+## Template adoption and distribution
+
+T2 protects every routing schema, fixture, policy and runbook as governance and adds
+Code Owner coverage. T3 distributes the helpers and schemas as managed files, while
+`docs/review-policy.json` is a project-owned seed: initial `enabled: false`, unresolved
+owner, no runtime evidence. Existing policies, extra obligations, project blocks,
+external routing choices and additional sensitive classes are preserved. Sync is
+not adoption, and dry-run writes nothing.
+
+The base-governed gate additionally binds current Git base/head, `digest({treeSha})`
+as the committed artifact identity, and `digest(rawBinaryDiffText)` as the diff
+identity (`git diff --binary --no-ext-diff base head`, including its final newline).
+Its adoption patch uses that same diff convention. The generic pure planner still
+accepts authenticated caller artifact digests; the template gate fixes a concrete
+Git convention. Working-tree changes are not a substitute for a committed head.
+
+The template CLI's v1 lane remains compatible. `--contract v2` blocks without the
+separate authenticated adoption/completion package; live CI transport/admission is
+not wired by this patch. New dependencies are copied from base only. Missing legacy
+gate code blocks bootstrap and requires a separate owner-governed transition, never
+an automatic PR-head substitution. No current review is silently reclassified.

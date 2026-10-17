@@ -76,6 +76,10 @@ export const LOOSENING_CONFIG_INVALID = "config_invalid";
 export const LOOSENING_MATCHER_CHANGED = "matcher_changed";
 /** Code that applies the list or the gates; editing or deleting one is matcher_changed. */
 export const GATE_CODE_FILES = Object.freeze([
+  "scripts/lib/model-routing.mjs",
+  "scripts/lib/review-completion.mjs",
+  "scripts/lib/review-policy.mjs",
+  "docs/review-policy.json",
   MATCHER_PATH,
   REPORT_RUNNER_PATH,
   "scripts/lib/pstack-config.mjs",

@@ -57,6 +57,30 @@ export const DEFAULT_OWNER_HANDLE = "@optomachina";
 
 // The sync script itself stays in the template: run it from here against a target.
 export const MANIFEST = Object.freeze([
+  { path: "docs/review-policy.json", mode: "seed" },
+  { path: "docs/runbooks/model-routing.md", mode: "managed" },
+  { path: "scripts/fixtures/model-routing/synthetic.mjs", mode: "managed" },
+  { path: "schemas/model-routing/catalog.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/catalog.v2.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/context.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/context.v2.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/override.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/policy.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/policy.v2.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/receipt.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/receipt.v2.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/request.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/review-completion-context.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/review-completion.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/review-policy.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/review-transition-authorization.v1.schema.json", mode: "managed" },
+  { path: "schemas/model-routing/review-transition.v1.schema.json", mode: "managed" },
+  { path: "scripts/lib/model-routing.mjs", mode: "managed" },
+  { path: "scripts/lib/model-routing.node-test.mjs", mode: "managed" },
+  { path: "scripts/lib/review-completion.mjs", mode: "managed" },
+  { path: "scripts/lib/review-completion.node-test.mjs", mode: "managed" },
+  { path: "scripts/lib/review-policy.mjs", mode: "managed" },
+  { path: "scripts/lib/review-policy.node-test.mjs", mode: "managed" },
   { path: "AGENTS.md", mode: "managed" },
   { path: "CLAUDE.md", mode: "managed" },
   { path: "pstack.config.json", mode: "seed" },
@@ -239,8 +263,10 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
       if (current !== null) next = current;
       else {
         const seeded = JSON.parse(source);
-        if (project) seeded.project.name = project;
-        if (owner) seeded.project.owner = owner;
+        if (entry.path === PSTACK_CONFIG_FILE) {
+          if (project) seeded.project.name = project;
+          if (owner) seeded.project.owner = owner;
+        }
         next = `${JSON.stringify(seeded, null, 2)}\n`;
       }
     } else if (entry.mode === "union") {

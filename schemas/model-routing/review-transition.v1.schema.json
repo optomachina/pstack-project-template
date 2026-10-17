@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pstack:review-transition:v1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "review-transition.v1"
+    },
+    "repoId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "baseSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "headSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "patchDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "oldPolicyDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "newPolicyDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "allowedBindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "family": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "surface": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "parameter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          }
+        },
+        "required": [
+          "profileId",
+          "provider",
+          "model",
+          "family",
+          "surface",
+          "effort",
+          "parameter"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true
+    },
+    "predicates": {
+      "type": "object",
+      "properties": {
+        "executionIndependence": {
+          "const": true
+        },
+        "preserveExplicitDiversity": {
+          "const": true
+        },
+        "distinctSlots": {
+          "const": true
+        }
+      },
+      "required": [
+        "executionIndependence",
+        "preserveExplicitDiversity",
+        "distinctSlots"
+      ],
+      "additionalProperties": false
+    },
+    "sourceReviewDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "authorizationRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+    }
+  },
+  "required": [
+    "schema",
+    "repoId",
+    "baseSha",
+    "headSha",
+    "patchDigest",
+    "oldPolicyDigest",
+    "newPolicyDigest",
+    "allowedBindings",
+    "predicates",
+    "sourceReviewDigest",
+    "authorizationRef",
+    "issuedAt",
+    "expiresAt"
+  ],
+  "additionalProperties": false
+}

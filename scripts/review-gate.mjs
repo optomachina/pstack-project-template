@@ -40,6 +40,7 @@ import { askJev, gatedChoice, sanitizeToken } from "./jev-client.mjs";
 import { PSTACK_CONFIG_FILE, parsePstackConfig } from "./lib/pstack-config.mjs";
 import {
   SENSITIVE_PATHS_FILE,
+  BASE_REF_UNAVAILABLE,
   classifyPaths,
   globMatcher,
   invokedAsScript,
@@ -199,6 +200,8 @@ export function loadGateConfigs({ root, baseRef = null }) {
 
 /** Run the gate end to end. ask defaults to the (inert unless configured) Jev client. */
 export async function runReviewGate({ root = process.cwd(), baseRef = null, files, title = "", changedLines = null, useJev = true, ask = askJev, env = process.env }) {
+  const legacyProblem = await legacyPolicyProblem(root, baseRef);
+  if (legacyProblem) return blockedCapabilityGate(legacyProblem);
   const configs = loadGateConfigs({ root, baseRef });
   let gate = { status: "not_configured" };
   if (useJev) {
@@ -217,6 +220,7 @@ export async function runReviewGate({ root = process.cwd(), baseRef = null, file
 }
 
 export function formatDecision(decision) {
+  if (decision.schema === "review-gate.v2") return `review-gate.v2: ${decision.status}; ${decision.reason}; obligations ${(decision.obligations ?? []).map(s => s.id).join(", ")}`;
   const lines = [
     `review-gate: ${decision.files} file(s), risk ${decision.risk} (deterministic ${decision.deterministic}, jev ${decision.jev.status}${decision.jev.tier ? ` ${decision.jev.tier}@${decision.jev.confidence}` : ""})`,
     `review-gate: review tier ${decision.review_tier} (${decision.reviews_required.join(" -> ")})`,
@@ -233,9 +237,10 @@ export function formatDecision(decision) {
 const USAGE = "usage: review-gate.mjs [--base-ref <ref>] [--changed-files-from <file>] [--numstat-from <file>] [--title <t>] [--no-jev] [--json-out <file>] [--log <jsonl>] [--root <dir>] [path ...]";
 
 export function parseArgs(argv) {
-  const options = { paths: [], useJev: true, baseRef: null };
+  const options = { paths: [], useJev: true, baseRef: null, contract: "v1" };
   const valueFlags = new Map([
     ["--base-ref", "baseRef"],
+    ["--contract", "contract"],
     ["--changed-files-from", "changedFilesFrom"],
     ["--numstat-from", "numstatFrom"],
     ["--title", "title"],
@@ -257,6 +262,7 @@ export function parseArgs(argv) {
     } else if (arg.startsWith("--")) throw new Error(`unknown option ${arg}; ${USAGE}`);
     else options.paths.push(arg);
   }
+  if (!["v1", "v2"].includes(options.contract)) throw new Error("unknown review contract");
   return options;
 }
 
@@ -281,13 +287,81 @@ export async function main(argv = process.argv.slice(2), { stdout = console.log,
     stderr(`review-gate: ${error.message}`);
     return 2;
   }
-  const decision = await runReviewGate({ root, baseRef: options.baseRef, files, title: options.title ?? "", changedLines, useJev: options.useJev, ask, env });
+  const decision = options.contract === "v2"
+    ? await runReviewGateV2({ root, baseRef: options.baseRef, files, changedLines })
+    : await runReviewGate({ root, baseRef: options.baseRef, files, title: options.title ?? "", changedLines, useJev: options.useJev, ask, env });
   if (options.jsonOut) writeFileSync(path.resolve(root, options.jsonOut), `${JSON.stringify(decision, null, 2)}\n`);
   if (options.log) appendFileSync(path.resolve(root, options.log), `${JSON.stringify({ ts: new Date().toISOString(), ...decision })}\n`);
   stdout(formatDecision(decision));
-  return 0;
+  return decision.schema === "review-gate.v2" && decision.status === "blocked" ? 1 : 0;
 }
 
 if (invokedAsScript(import.meta.url)) {
   process.exitCode = await main();
+}
+
+/** Explicit inactive v2 entrypoint. Adoption and completion contexts must be authenticated by the caller. */
+export async function runReviewGateV2({root,baseRef,headRef='HEAD',files,gate={status:'not_configured'},changedLines=null,
+  routingInput=null,adoption=null,completion=null,now}={}) {
+  const fail=blockedCapabilityGate;
+  try {
+    const policyApi=await import('./lib/review-policy.mjs');
+    const {digest,resolveRoutingV2}=await import('./lib/model-routing.mjs');
+    const {validateReviewCompletions}=await import('./lib/review-completion.mjs');
+    const loaded=policyApi.loadBaseReviewPolicy({root,baseRef});
+    if(!adoption||!policyApi.validateReviewTransition({...adoption,policy:loaded.policy,now}))return fail('transition_authority_required');
+    // The adoption head must already belong to this committed base history.
+    const {execFileSync}=await import('node:child_process');
+    execFileSync('git',['merge-base','--is-ancestor',adoption.transition.headSha,baseRef],{cwd:root,stdio:'pipe'});
+    const revisionIssue=checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execFileSync,digest);
+    if(revisionIssue)return fail(revisionIssue);
+    const sensitiveText=readRefFile(root,baseRef,SENSITIVE_PATHS_FILE), configText=readRefFile(root,baseRef,PSTACK_CONFIG_FILE);
+    if(sensitiveText===null||configText===null)return fail('base_configuration_missing');
+    const d=decide({files,sensitivePaths:parseSensitivePaths(sensitiveText),pstackConfig:parsePstackConfig(configText),gate,changedLines});
+    const risk={low:'low',normal:'moderate',risky:'high'}[d.risk];
+    const obligations=loaded.policy.reviewRules.find(r=>r.risk===risk)?.slots;
+    if(!obligations)return fail('missing_risk_rule');
+    const {review_tier,reviews_required,...common}=d;
+    const result={...common,schema:'review-gate.v2',status:'blocked',reason:'binding_required',policy_digest:loaded.digest,
+      policy_version:loaded.policy.version,obligations,binding_plan:null,completion:null,receipt_refs:[],config_sources:{sensitivePaths:'base',pstackConfig:'base',reviewPolicy:'base'}};
+    result.auto_merge={...d.auto_merge,eligible:false,blockers:d.auto_merge.blockers.map(b=>b.replace('Opus review','deep review'))};
+    if(!policyApi.matchesBaseReviewPolicy(loaded.policy,routingInput)||routingInput.trustedContext?.risk!==risk)return result;
+    if(routingInput.trustedContext.reviewSubject?.kind!=='existing_artifact')return {...result,reason:'exact_artifact_required'};
+    result.binding_plan=resolveRoutingV2(routingInput);
+    if(result.binding_plan.status!=='planned')return {...result,reason:result.binding_plan.reason};
+    if(!completion)return {...result,reason:'completion_required'};
+    result.completion=validateReviewCompletions({...completion,plan:result.binding_plan,now});
+    if(result.completion.status!=='accepted')return {...result,reason:result.completion.reason};
+    result.receipt_refs=completion.receipts.map(r=>({id:r.id,digest:digest(r)}));
+    return {...result,status:'consistent',reason:'base_governed_declarations_consistent',auto_merge:d.auto_merge};
+  } catch {return fail('invalid_base_policy_or_authority');}
+}
+
+function checkRevisionBinding({root,baseRef,headRef,routingInput,adoption},execFileSync,digest) {
+    const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+    const head=git('rev-parse','--verify','--end-of-options',`${headRef}^{commit}`).trim();
+    const base=git('rev-parse','--verify','--end-of-options',`${baseRef}^{commit}`).trim();
+    const treeSha=git('rev-parse',`${head}^{tree}`).trim();
+    const patch=digest(git('diff','--binary','--no-ext-diff',base,head));
+    const adoptionPatch=digest(git('diff','--binary','--no-ext-diff',adoption.transition.baseSha,adoption.transition.headSha));
+    if(adoption.transition.patchDigest!==adoptionPatch)return 'transition_patch_mismatch';
+    if(routingInput&&(routingInput.trustedContext?.sourceSha!==head||routingInput.trustedContext?.baseSha!==base||
+      routingInput.trustedContext?.diffDigest!==patch||routingInput.trustedContext?.artifactDigest!==digest({treeSha})))return 'stale_revision_binding';
+    return null;
+}
+
+function blockedCapabilityGate(reason) {
+  return {schema:'review-gate.v2',status:'blocked',reason,policy_digest:null,
+    obligations:[],binding_plan:null,completion:null,receipt_refs:[],auto_merge:{eligible:false}};
+}
+
+async function legacyPolicyProblem(root,baseRef) {
+  if(baseRef===null||baseRef===undefined)return null;
+  try {
+    const text=readRefFile(root,baseRef,'docs/review-policy.json');
+    if(text===null)return null; // An unchanged consumer's explicitly legacy base.
+    const policy=JSON.parse(text),{validateV2}=await import('./lib/model-routing.mjs');
+    if(!validateV2('reviewPolicy',policy).valid)return 'invalid_base_review_policy';
+    return policy.enabled?'adopted_policy_requires_v2':null;
+  } catch(error) {return error.code===BASE_REF_UNAVAILABLE?null:'base_review_policy_unavailable';}
 }

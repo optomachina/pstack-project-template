@@ -1,5 +1,5 @@
 // Frozen fictional records. No live provider, runtime or entitlement claims.
-import { digest } from '../../lib/model-routing.mjs';
+import { digest, resolveRoutingV2 } from '../../lib/model-routing.mjs';
 export const now = '2026-10-17T12:00:00Z';
 const issuedAt = '2026-10-17T11:00:00Z', expiresAt = '2026-10-18T00:00:00Z';
 export function rebind(input) {
@@ -82,4 +82,30 @@ export function fixtureV2() {
 export function unavailableV2(f, entryId) {
   const e=f.trustedContext.evidence.find(x=>x.scope===entryId&&x.kind==='availability');
   e.status='unavailable';e.failure={code:'quota_exhausted',resetAt:null};return f;
+}
+
+export function completionFixture(f=fixtureV2()) {
+  const plan=resolveRoutingV2(f);
+  if(plan.status!=='planned')throw new Error('fixture plan blocked: '+plan.reason);
+  const expected={repoId:plan.binding.repoId,baseSha:plan.binding.baseSha,headSha:plan.binding.sourceSha,
+    artifactDigest:plan.artifactDigest,diffDigest:plan.diffDigest,policyDigest:plan.policyDigest,catalogDigest:plan.catalogDigest,
+    contextDigest:plan.contextDigest,planDigest:digest(plan)};
+  const receipts=plan.reviewPlans.map((r,i)=>{
+    const s=r.selection,identity={provider:s.provider,model:s.model,family:s.family,effort:s.plannedEmission.value};
+    return {schema:'model-routing.review-completion.v1',id:'receipt-'+i,...expected,
+      policyRevision:plan.policyRevision,catalogRevision:plan.catalogRevision,slotId:r.obligationId,
+      subject:r.subject,authors:r.independenceAuthors,executionId:s.executionId,adapterDigest:s.adapterDigest,
+      adapterVersion:s.adapterVersion,surface:s.surface,runtimeVersion:s.runtimeVersion,
+      requested:{...identity},selected:{...identity},emitted:{...identity},observed:{...identity},
+      observationRef:'observation-'+i,issuer:'synthetic-controller',startedAt:'2026-10-17T12:00:00Z',
+      completedAt:'2026-10-17T12:01:00Z',expiresAt:'2026-10-18T00:00:00Z',resultDigest:String(i+1).repeat(64),
+      verdict:'pass',findings:[],tests:[{id:'offline-contract',headSha:expected.headSha,digest:'8'.repeat(64),status:'pass'}],
+      usage:{tokens:50,wallTimeMs:1000,attempts:1}};
+  });
+  const trustedContext={schema:'model-routing.review-completion-context.v1',expected,
+    observations:receipts.map(r=>({receiptId:r.id,receiptDigest:digest(r),issuer:r.issuer,reference:r.observationRef,
+      observedAt:r.completedAt,expiresAt:r.expiresAt,executionId:r.executionId,identity:r.observed,resultDigest:r.resultDigest})),
+    usedReceiptIds:[],usedResultDigests:[],budget:structuredClone(plan.budget),
+    limits:{maxRepairRounds:2,maxNoProgress:2,maxSimilarFailures:3}};
+  return {plan,receipts,trustedContext,now:'2026-10-17T12:02:00Z'};
 }

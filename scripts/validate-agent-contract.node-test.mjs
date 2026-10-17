@@ -23,6 +23,7 @@ function contractCopy({ agents = agentsText, claude, list = listText, config = c
   const dir = mkdtempSync(join(tmpdir(), "agent-contract-"));
   temps.push(dir);
   mkdirSync(join(dir, "docs"));
+  copyFileSync(join(repoRoot, "docs/review-policy.json"), join(dir, "docs/review-policy.json"));
   if (claude === undefined) copyFileSync(join(repoRoot, "CLAUDE.md"), join(dir, "CLAUDE.md"));
   else if (claude !== null) writeFileSync(join(dir, "CLAUDE.md"), claude);
   if (agents !== null) writeFileSync(join(dir, "AGENTS.md"), agents);
@@ -82,5 +83,18 @@ describe("agent contract", () => {
     assert.ok(validateAgentContract(contractCopy({ agents })).some((error) => /project:begin and .* project:end/.test(error)));
     assert.ok(validateAgentContract(contractCopy({ list: null })).includes(`${SENSITIVE_PATHS_FILE} is missing`));
     assert.ok(validateAgentContract(contractCopy({ config: JSON.stringify({ version: 1 }) })).some((error) => error.startsWith("pstack.config.json:")));
+  });
+});
+
+
+describe('capability policy governance', () => {
+  it('rejects malformed policy and enabled placeholders', () => {
+    const dir = contractCopy();
+    writeFileSync(join(dir,'docs/review-policy.json'),'{"version":999}');
+    assert.ok(validateAgentContract(dir).includes('docs/review-policy.json is invalid'));
+    const policy = JSON.parse(readFileSync(join(repoRoot,'docs/review-policy.json')));
+    policy.enabled = true;
+    writeFileSync(join(dir,'docs/review-policy.json'),JSON.stringify(policy));
+    assert.ok(validateAgentContract(dir).some(e=>e.includes('verified matching project ownerHandle')));
   });
 });

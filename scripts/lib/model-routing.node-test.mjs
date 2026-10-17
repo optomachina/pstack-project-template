@@ -357,7 +357,7 @@ const fixturesV2 = await import('../fixtures/model-routing/synthetic.mjs');
 const routeV2 = f => {const r=v2.resolveRoutingV2(f);assert.equal(v2.validateV2('receipt',r).valid,true,JSON.stringify(v2.validateV2('receipt',r)));return r;};
 test('v2 schemas match files and do not extend legacy closed objects',()=>{
   for(const [name,s] of Object.entries(v2.schemasV2)) {
-    const file=name==='reviewCompletion'?'review-completion.v1':name==='reviewCompletionContext'?'review-completion-context.v1':name+'.v2';
+    const file=['policy','context','catalog','receipt'].includes(name)?name+'.v2':name.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())+'.v1';
     assert.deepEqual(JSON.parse(readFileSync(new URL(`../../schemas/model-routing/${file}.schema.json`,import.meta.url))),s);
   }
   assert.equal(validate('policy',fixturesV2.fixtureV2().policy).valid,false);
@@ -405,4 +405,34 @@ test('v2 planned producer still cannot review itself',()=>{
 test('v2 legacy named binding cannot use capability fallback',()=>{
   const f=fixturesV2.fixtureV2();f.policy.reviewRules[2].slots[0].binding={kind:'named',provider:'fake-b',model:'fake-review-1',family:'family-b',explicitEffort:'high',profiles:['review']};
   fixturesV2.unavailableV2(f,'review-entry');fixturesV2.rebindV2(f);assert.equal(routeV2(f).status,'blocked');
+});
+
+test('v2 every schema object is closed and every populated input object rejects unknown fields',()=>{
+  function inspect(s){if(s.type==='object'){assert.equal(s.additionalProperties,false);assert.deepEqual(s.required,Object.keys(s.properties));Object.values(s.properties).forEach(inspect);}if(s.items)inspect(s.items);if(s.oneOf)s.oneOf.forEach(inspect);}
+  Object.values(v2.schemasV2).forEach(inspect);
+  const f=fixturesV2.fixtureV2();
+  for(const [name,root] of [['policy',f.policy],['catalog',f.catalog],['context',f.trustedContext],['receipt',routeV2(f)]]) {
+    function visit(node,path=[]) {
+      if(node===null||typeof node!=='object')return;
+      if(!Array.isArray(node)){const modified=structuredClone(root);path.reduce((v,k)=>v[k],modified).unexpected=true;assert.equal(v2.validateV2(name,modified).valid,false);}
+      for(const key of Object.keys(node))visit(node[key],[...path,key]);
+    }
+    visit(root);
+  }
+});
+test('v2 existing subject binds the same exact artifact as the receipt',()=>{
+  const f=fixturesV2.fixtureV2();f.trustedContext.reviewSubject.artifactDigest='0'.repeat(64);
+  assert.equal(routeV2(f).reason,'review_subject_mismatch');
+});
+test('v2 extra project obligations require and preserve an additional distinct review',()=>{
+  const f=fixturesV2.fixtureV2();
+  const entry={...structuredClone(f.catalog.entries.find(e=>e.id==='deep-entry')),id:'audit-entry'};
+  const profile={...structuredClone(f.policy.profiles.find(p=>p.id==='deep')),id:'audit',entryId:entry.id};
+  f.catalog.entries.push(entry);f.policy.profiles.push(profile);
+  f.trustedContext.evidence.push(...f.trustedContext.evidence.filter(e=>e.scope==='deep-entry').map(e=>({...e,scope:entry.id,reference:'audit-'+e.kind,executionId:'audit-1'})));
+  const slot=structuredClone(f.policy.reviewRules[2].slots[1]);slot.id='project-audit';slot.binding.primaryProfiles=['audit'];slot.binding.fallbackProfiles=[];
+  f.policy.reviewRules[2].slots.push(slot);fixturesV2.rebindV2(f);
+  const r=routeV2(f);assert.equal(r.status,'planned');assert.equal(r.reviewPlans.length,3);
+  for(const e of f.trustedContext.evidence)if(e.scope==='audit-entry')e.executionId='deep-1';
+  assert.equal(routeV2(f).status,'blocked');
 });

@@ -6384,6 +6384,498 @@ function bundledV2Schemas() {
         "limits"
       ],
       "additionalProperties": false
+    },
+    "reviewPolicy": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:pstack:review-policy:v1",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "review-policy.v1"
+        },
+        "version": {
+          "const": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "ownerHandle": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^@[A-Za-z0-9][A-Za-z0-9-]*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "risk": {
+                "enum": [
+                  "low",
+                  "moderate",
+                  "high"
+                ]
+              },
+              "slots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                    },
+                    "independent": {
+                      "const": true
+                    },
+                    "crossFamily": {
+                      "type": "boolean"
+                    },
+                    "binding": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "named"
+                            },
+                            "provider": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                            },
+                            "model": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                            },
+                            "family": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                            },
+                            "explicitEffort": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                            },
+                            "profiles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 128,
+                              "uniqueItems": true
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "provider",
+                            "model",
+                            "family",
+                            "explicitEffort",
+                            "profiles"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "const": "capability"
+                            },
+                            "capability": {
+                              "enum": [
+                                "correctness",
+                                "deep"
+                              ]
+                            },
+                            "coverage": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 128,
+                              "uniqueItems": true
+                            },
+                            "primaryProfiles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 128,
+                              "uniqueItems": true
+                            },
+                            "fallbackProfiles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160,
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                              },
+                              "minItems": 0,
+                              "maxItems": 128,
+                              "uniqueItems": true
+                            },
+                            "fallbackWhen": {
+                              "const": "confirmed_unavailable"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "capability",
+                            "coverage",
+                            "primaryProfiles",
+                            "fallbackProfiles",
+                            "fallbackWhen"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "independent",
+                    "crossFamily",
+                    "binding"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0,
+                "maxItems": 128,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "risk",
+              "slots"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 3,
+          "maxItems": 128,
+          "uniqueItems": true
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "family": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "surface": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "effort": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "parameter": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              }
+            },
+            "required": [
+              "profileId",
+              "provider",
+              "model",
+              "family",
+              "surface",
+              "effort",
+              "parameter"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true
+        },
+        "legacyRequirementPolicy": {
+          "const": "preserve-until-transition"
+        }
+      },
+      "required": [
+        "schema",
+        "version",
+        "revision",
+        "enabled",
+        "ownerHandle",
+        "reviewRules",
+        "bindings",
+        "legacyRequirementPolicy"
+      ],
+      "additionalProperties": false
+    },
+    "reviewTransition": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:pstack:review-transition:v1",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "review-transition.v1"
+        },
+        "repoId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "baseSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "headSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "patchDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "oldPolicyDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "newPolicyDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "allowedBindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "family": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "surface": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "effort": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              },
+              "parameter": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+              }
+            },
+            "required": [
+              "profileId",
+              "provider",
+              "model",
+              "family",
+              "surface",
+              "effort",
+              "parameter"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true
+        },
+        "predicates": {
+          "type": "object",
+          "properties": {
+            "executionIndependence": {
+              "const": true
+            },
+            "preserveExplicitDiversity": {
+              "const": true
+            },
+            "distinctSlots": {
+              "const": true
+            }
+          },
+          "required": [
+            "executionIndependence",
+            "preserveExplicitDiversity",
+            "distinctSlots"
+          ],
+          "additionalProperties": false
+        },
+        "sourceReviewDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "authorizationRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+        }
+      },
+      "required": [
+        "schema",
+        "repoId",
+        "baseSha",
+        "headSha",
+        "patchDigest",
+        "oldPolicyDigest",
+        "newPolicyDigest",
+        "allowedBindings",
+        "predicates",
+        "sourceReviewDigest",
+        "authorizationRef",
+        "issuedAt",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    },
+    "reviewTransitionAuthorization": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:pstack:review-transition-authorization:v1",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "review-transition-authorization.v1"
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "ownerHandle": {
+          "type": "string",
+          "pattern": "^@[A-Za-z0-9][A-Za-z0-9-]*$"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "transitionDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceReviewDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+        }
+      },
+      "required": [
+        "schema",
+        "issuer",
+        "ownerHandle",
+        "reference",
+        "transitionDigest",
+        "sourceReviewDigest",
+        "observedAt",
+        "expiresAt"
+      ],
+      "additionalProperties": false
     }
   };
 }
@@ -6411,6 +6903,7 @@ function checkV2Input(input) {
   const { policy: p, catalog: c, trustedContext: t, request: r } = input;
   if (t.policyDigest !== digest(p) || t.catalogDigest !== digest(c) || p.catalogDigest !== digest(c) ||
       bindingKeys.some(k => !equal(r[k], t[k]))) return 'digest_or_context_mismatch';
+  if (t.reviewSubject.kind === 'existing_artifact' && t.reviewSubject.artifactDigest !== t.artifactDigest) return 'review_subject_mismatch';
   if (new Set(p.reviewRules.map(x => x.risk)).size !== 3 || p.reviewRules.length !== 3) return 'ambiguous_review_rules';
   for (const rule of p.reviewRules) {
     const ids = rule.slots.map(x => x.id);
@@ -6418,8 +6911,8 @@ function checkV2Input(input) {
         (rule.risk !== 'low' && !ids.includes('correctness')) ||
         (rule.risk === 'high' && !ids.includes('deep'))) return 'missing_review_slot';
     for (const slot of rule.slots) {
-      const b = slot.binding, required = REVIEW_COVERAGE[slot.id] ?? [];
-      if (b.kind === 'capability' && (b.capability !== slot.id || required.some(x => !b.coverage.includes(x)))) return 'missing_review_coverage';
+      const b = slot.binding, required = REVIEW_COVERAGE[b.kind === 'capability' ? b.capability : slot.id] ?? [];
+      if (b.kind === 'capability' && ((REVIEW_COVERAGE[slot.id] && b.capability !== slot.id) || required.some(x => !b.coverage.includes(x)))) return 'missing_review_coverage';
       const profiles = b.kind === 'named' ? b.profiles : [...b.primaryProfiles, ...b.fallbackProfiles];
       if (new Set(profiles).size !== profiles.length || profiles.some(id => !p.profiles.some(x => x.id === id))) return 'unresolved_review_profile';
     }

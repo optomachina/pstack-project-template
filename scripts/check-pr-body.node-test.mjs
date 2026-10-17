@@ -61,3 +61,19 @@ describe("pr-body gate", () => {
     assert.equal(main(["--nope"], { stderr: () => {} }), 2);
   });
 });
+
+
+describe('v2 body evidence', () => {
+  const decision={schema:'review-gate.v2',status:'consistent',risk:'risky',policy_digest:'a'.repeat(64),obligations:[{id:'correctness'},{id:'deep'}],
+    completion:{status:'accepted'},receipt_refs:[{id:'r1',digest:'b'.repeat(64)},{id:'r2',digest:'c'.repeat(64)}],sensitive:{sensitive:true,classes:['infra_ci']}};
+  const body='preflight: test PASS\nJourney test: N/A - offline contract\nSensitive classes: infra_ci\nReview risk: risky\nReview policy: '+decision.policy_digest+
+    '\nReview obligations: correctness, deep\nReview receipt: r1 '+'b'.repeat(64)+' artifact:r1\nReview receipt: r2 '+'c'.repeat(64)+' https://example.test/review';
+  it('accepts genuine base-matched references without provider relabeling',()=>assert.deepEqual(checkPrBody(body,decision),[]));
+  it('rejects legacy relabeling, missing receipts, pending evidence and unknown contracts',()=>{
+    assert.ok(checkPrBody(body+'\nReview tier: opus',decision).length);
+    assert.ok(checkPrBody(body.replace('Review receipt: r2','Missing receipt: r2'),decision).length);
+    assert.ok(checkPrBody(body,{...decision,completion:{status:'blocked'}}).length);
+    assert.ok(checkPrBody(body,{...decision,schema:'review-gate.v99'}).length);
+    assert.ok(checkPrBody(good,{...sensitiveReview,providerOverride:'astra'}).length);
+  });
+});

@@ -68,7 +68,7 @@ Anything else, and anything on the sensitive list, needs {{OWNER}}'s explicit ap
 - **payments** (payments, pricing, billing): `**/*payment*{,/**}`, `**/*billing*{,/**}`, `**/*stripe*{,/**}`, `**/*pricing*{,/**}`, `**/*invoice*{,/**}`, `**/*checkout*{,/**}`, `**/*subscription*{,/**}`
 - **integrations** (external integrations): `**/*dispatch*{,/**}`, `**/*webhook*{,/**}`, `**/{adapters,integrations,providers}/**`
 - **secrets** (secrets and env): `**/*secret*{,/**}`, `**/*credential*{,/**}`, `**/*.pem`, `**/*.key`, `**/*.p12`, `**/keys/**`, `**/token{,s}.{json,yaml,yml,ts,js}`, `**/*vault*{,/**}`, `**/.env*`, `**/env.{ts,js,json}`
-- **infra_ci** (infra, ci, deploy, governance): `.github/workflows/**`, `.github/actions/**`, `templates/.github/**`, `.github/CODEOWNERS`, `.github/pull_request_template.md`, `**/{infra,terraform,deploy,k8s,helm,ops}/**`, `**/*.tf`, `**/Dockerfile*`, `**/docker-compose*`, `**/{vercel.json,netlify.toml,fly.toml}`, `scripts/deploy*{,/**}`, `scripts/release*{,/**}`, `docs/sensitive-paths.json`, `AGENTS.md`, `CLAUDE.md`, `pstack.config.json`, `.pstack-template-version`, `scripts/lib/**`, `scripts/sensitive-paths*`, `scripts/fixtures/sensitive-paths/**`, `scripts/fixtures/pstack-config/**`, `scripts/review-gate*`, `scripts/jev-client*`, `scripts/check-journey-tests*`, `scripts/check-pr-body*`, `scripts/validate-agent-contract*`, `scripts/preflight*`, `scripts/sync-template*`, `scripts/gate-workflows*`
+- **infra_ci** (infra, ci, deploy, governance): `.github/workflows/**`, `.github/actions/**`, `templates/.github/**`, `.github/CODEOWNERS`, `.github/pull_request_template.md`, `**/{infra,terraform,deploy,k8s,helm,ops}/**`, `**/*.tf`, `**/Dockerfile*`, `**/docker-compose*`, `**/{vercel.json,netlify.toml,fly.toml}`, `scripts/deploy*{,/**}`, `scripts/release*{,/**}`, `docs/sensitive-paths.json`, `AGENTS.md`, `CLAUDE.md`, `pstack.config.json`, `.pstack-template-version`, `scripts/lib/**`, `scripts/sensitive-paths*`, `scripts/fixtures/sensitive-paths/**`, `scripts/fixtures/pstack-config/**`, `scripts/review-gate*`, `scripts/jev-client*`, `scripts/check-journey-tests*`, `scripts/check-pr-body*`, `scripts/validate-agent-contract*`, `scripts/preflight*`, `scripts/sync-template*`, `scripts/gate-workflows*`, `schemas/model-routing/**`, `docs/review-policy.json`, `docs/runbooks/model-routing.md`, `docs/runbooks/review-gates.md`, `scripts/fixtures/model-routing/**`
 - **deps** (dependencies): `**/package.json`, `**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,deno.lock}`, `**/requirements*.txt`, `**/{pyproject.toml,uv.lock,poetry.lock,Pipfile,Pipfile.lock}`, `**/{Cargo.toml,Cargo.lock,go.mod,go.sum,Gemfile,Gemfile.lock}`
 <!-- sensitive-paths:end -->
 
@@ -103,6 +103,18 @@ Run `npm run preflight` (`scripts/preflight.sh`: typecheck, lint, unit tests, bu
 ## Risk-sized review
 
 Review is sized by risk with `scripts/review-gate.mjs`: a Jev screen first, then Sonnet, then Opus only for PRs Jev flags risky or that touch [sensitive paths](#sensitive-paths-single-shared-list). Jev may only raise the deterministic tier; a failed, uncertain, or unconfigured screen counts as normal, so low-risk (Jev-only) review needs a confident Jev answer. Low-risk PRs stop after Jev, normal PRs after Sonnet. The Jev client is inert unless `JEV_ENDPOINT` is configured outside the repository. Sizing chooses reviewers; it never replaces deterministic checks. Independent Opus review is also required for cross-cutting architecture, security-sensitive boundaries, disputed evidence, and repeated failure. See [review gates](docs/runbooks/review-gates.md).
+
+### Explicit capability transition (inactive)
+
+The named v1 rules above remain effective until an owner-authorized, exact-patch
+transition is adopted in the base policy. `docs/review-policy.json` is disabled by
+default. Adopted v2 uses correctness and deep obligations with explicitly eligible
+provider bindings; it never relabels Astra as Sonnet/Opus. Normal risk retains
+correctness; risky retains correctness plus a distinct deep execution. Preserve
+writer/contributor independence, every explicit cross-family predicate, repair
+budgets, current-head evidence and all existing owner/Code Owner/CI/journey gates.
+See [review gates](docs/runbooks/review-gates.md) for the strict completion and
+adoption contract. Historical reviews keep their original policy and identities.
 
 ## Journey tests
 

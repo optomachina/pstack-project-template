@@ -250,3 +250,23 @@ describe("the template repository itself", () => {
     assert.equal(read(repoRoot, "scripts/fixtures/pstack-config/template.json"), read(repoRoot, "pstack.config.json"));
   });
 });
+
+describe('capability contract distribution',()=>{
+  it('seeds disabled routing and preserves project policy, extra obligations and runtime choices',()=>{
+    const target=configuredTarget({name:'Acme',owner:'Dana',ownerHandle:'@acme/platform'});
+    syncTemplate({target});
+    const policy=JSON.parse(read(target,'docs/review-policy.json'));
+    assert.equal(policy.enabled,false);assert.equal(policy.ownerHandle,null);
+    policy.reviewRules[2].slots.push({...structuredClone(policy.reviewRules[2].slots[1]),id:'project-audit',crossFamily:true});
+    const custom=JSON.stringify(policy);writeFileSync(join(target,'docs/review-policy.json'),custom);
+    writeFileSync(join(target,'pstack.routing.json'),'project-owned-disabled-config');
+    const first=syncTemplate({target,dryRun:true});
+    assert.equal(read(target,'docs/review-policy.json'),custom);
+    syncTemplate({target});
+    assert.equal(read(target,'docs/review-policy.json'),custom);
+    assert.equal(read(target,'pstack.routing.json'),'project-owned-disabled-config');
+    assert.equal(first.actions.find(a=>a.path==='docs/review-policy.json').action,'kept');
+    const second=syncTemplate({target});
+    assert.ok(second.actions.filter(a=>a.path!==VERSION_FILE).every(a=>['unchanged','kept'].includes(a.action)));
+  });
+});
