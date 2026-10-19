@@ -108,6 +108,20 @@ Review is sized by risk with `scripts/review-gate.mjs`: a Jev screen first, then
 
 Every user-visible change adds or updates a journey test that drives the real UI: it starts where a user starts (a public entry point, real routing, a real browser), performs the user's steps, and asserts what the user sees. Component tests and mocked renders do not count. `scripts/check-journey-tests.mjs` fails a PR that changes a user-visible path (`pstack.config.json` `journeyTests.userVisible`) without changing a journey test (`journeyTests.journeyTests`), unless the PR body has a line `Journey test: N/A - <reason>` with a real reason (for example a copy-only change already covered by an existing journey). Material UI behavior also needs real browser evidence (screenshot or run link) in the PR.
 
+## Task contract
+
+Each unit states what it is for and how it is accepted, using the existing issue and PR sections rather than a parallel form. Fields and where they live are in [task contract](docs/runbooks/task-contract.md).
+
+- Outcome and why it matters: the issue and the PR Summary.
+- Scope and explicit non-goals: the PR Scope.
+- Raw evidence and authoritative sources: name the rawest data (logs, the database, the drawing, the vendor's own documentation), not a summary of it.
+- Required tools and access: name them and check them before work starts; a missing one is a named blocker, not a guess.
+- Method: what an expert in the problem would do, naming the instrument (a profiler, a database query, a drawing standard).
+- Independent acceptance: trigger, observable outcome, failure condition, and what outside the writer confirms it (a command, a test, an independent verifier).
+- Budget (attempts, time, spend), stopping conditions and escalation: the [repair budget](docs/runbooks/repair-budget.md) and "Completion and failure".
+
+A trivial unit needs only the outcome and one independent acceptance check. Agents may change the approach, but must escalate changes to scope, spending, permissions or consequential commitments. A second model's agreement is review evidence; it never replaces a runnable acceptance check or a test. A specialist reviewer counts only through checks it ran (command, exit status, artifact), never opinions.
+
 ## Verification
 
 - Plan verification from the failures the change must prevent: a trigger, an observable expected outcome, and an explicit failure condition, including invalid-input, authorization, race, partial-failure and recovery cases. Choose the smallest layer that can observe each outcome; run targeted checks first and the full gate at the PR boundary.

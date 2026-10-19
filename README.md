@@ -24,7 +24,7 @@ A project-agnostic copy of OverDrafter's pstack engineering setup: an agent cont
 | `templates/.github/workflows/pr-body-gate.yml` | `pr-body` check (runs on body edits without rerunning CI) |
 | `scripts/fixtures/pstack-config/template.json` | The template's `pstack.config.json`, which the gate tests use so a project's own globs cannot break them |
 | `.github/pull_request_template.md` | Preflight lines, journey test, review tier, sensitive classes, risk and rollback |
-| `docs/runbooks/` | `pr-lifecycle`, `review-gates`, `repair-budget`, `merge-and-rollback`, `branch-protection` |
+| `docs/runbooks/` | `pr-lifecycle`, `review-gates`, `repair-budget`, `merge-and-rollback`, `branch-protection`, `task-contract` |
 | `docs/agent-graph.md` | Where the agent graph is defined, plus metrics |
 
 ## Install into a project

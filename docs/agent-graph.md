@@ -45,6 +45,21 @@ issue ──> writer (one owner per PR)
 | Reviewers | Jev, Sonnet, Opus | findings, verdict on the head SHA | sized by the review gate |
 | Merger | auto-merge or owner | squash commit | branch protection |
 
+## Phases and transitions
+
+The same pipeline read as phases. This adds no node to the graph; it names what must be true to enter and leave each phase and says honestly which transitions a gate enforces. The task fields are in the [task contract](runbooks/task-contract.md).
+
+| Phase | Graph node | Entry condition | Exit evidence | Enforcing gate |
+| --- | --- | --- | --- | --- |
+| Intake | issue | One bounded change with outcome and independent acceptance named | Issue with acceptance criteria, owner and completion condition | Unenforced (`pr-lifecycle` step 1 is a procedure) |
+| Investigation | issue -> writer | Sensitive scope classified; required access and raw sources named | Sensitive classes, plan for sensitive scope, raw evidence cited | Sensitive scope routing is enforced at the PR by the review gate; the investigation itself is unenforced |
+| Implementation | writer | Branch or worktree with one recorded owner | Commits, `npm run preflight` lines | `scripts/preflight.sh` (local and CI) |
+| Validation | PR -> CI | Preflight lines in the PR body | Green current-head checks: `ci`, `pr-body` | `agent-contract`, `pr-gates`, `pr-body` (`scripts/check-pr-body.mjs`) |
+| Review | review gate | Green CI at the head SHA | Reviewers the gate names completed on the head; findings dispositioned | `scripts/review-gate.mjs` sizes the review; completion on the head is checked by the merger, not by a script |
+| Release | merge -> rollback | Review passed, no open actionable findings | Squash commit; first default-branch CI run green; rollback path recorded | Branch protection; independent acceptance beyond CI and post-merge criteria are unenforced |
+
+Independent acceptance of a task's own outcome (not only the repository's checks) is recorded in the PR `## Verification` section and is unenforced by any script.
+
 ## Metrics
 
 Ported from OverDrafter's `docs/agent-graph-metrics.md`. Count by hand or with `gh`; no tooling is required.

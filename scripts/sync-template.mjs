@@ -67,6 +67,7 @@ export const MANIFEST = Object.freeze([
   { path: "docs/runbooks/repair-budget.md", mode: "managed" },
   { path: "docs/runbooks/merge-and-rollback.md", mode: "managed" },
   { path: "docs/runbooks/branch-protection.md", mode: "managed" },
+  { path: "docs/runbooks/task-contract.md", mode: "managed" },
   { path: ".github/workflows/ci.yml", source: "templates/.github/workflows/ci.yml", mode: "managed" },
   { path: ".github/workflows/pr-body-gate.yml", source: "templates/.github/workflows/pr-body-gate.yml", mode: "managed" },
   { path: ".github/pull_request_template.md", mode: "managed" },

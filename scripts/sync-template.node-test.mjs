@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -111,6 +112,18 @@ describe("syncTemplate", () => {
     assert.equal(version.template, "pstack-template");
     assert.equal(version.version, JSON.parse(read(repoRoot, "package.json")).version);
     assert.equal(Object.keys(version.files).length, MANIFEST.length);
+  });
+
+  it("installs the task-contract runbook after the branch-protection runbook and records its hash", () => {
+    const paths = MANIFEST.map((entry) => entry.path);
+    assert.equal(paths.indexOf("docs/runbooks/task-contract.md"), paths.indexOf("docs/runbooks/branch-protection.md") + 1);
+    const target = tempDir();
+    syncTemplate({ target, project: "Acme", owner: "Dana" });
+    const runbook = read(target, "docs/runbooks/task-contract.md");
+    assert.match(runbook, /^# Task contract/);
+    assert.ok(!runbook.includes("{{"));
+    const version = JSON.parse(read(target, VERSION_FILE));
+    assert.equal(version.files["docs/runbooks/task-contract.md"], createHash("sha256").update(runbook).digest("hex"));
   });
 
   it("preserves project sections, pstack.config.json and added sensitive globs on update", () => {

@@ -34,6 +34,7 @@ export const REQUIRED_SECTIONS = Object.freeze([
   "Preflight and repair budget",
   "Risk-sized review",
   "Journey tests",
+  "Task contract",
   "Completion and failure",
 ]);
 /** Rules whose wording other gates and runbooks depend on. */
@@ -43,6 +44,7 @@ export const REQUIRED_PHRASES = Object.freeze([
   "npm run preflight",
   "scripts/validate-agent-contract.mjs",
   "Never convert skipped",
+  "A second model's agreement is review evidence; it never replaces a runnable acceptance check or a test.",
 ]);
 
 export function validateAgentContract(repoRoot = root) {

@@ -6,7 +6,9 @@ import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SENSITIVE_PATHS_FILE } from "./lib/sensitive-paths.mjs";
-import { REQUIRED_SECTIONS, validateAgentContract } from "./validate-agent-contract.mjs";
+import { REQUIRED_PHRASES, REQUIRED_SECTIONS, validateAgentContract } from "./validate-agent-contract.mjs";
+
+const AGREEMENT = "A second model's agreement is review evidence; it never replaces a runnable acceptance check or a test.";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const agentsText = readFileSync(join(repoRoot, "AGENTS.md"), "utf8");
@@ -53,6 +55,16 @@ describe("agent contract", () => {
     }
     const agents = agentsText.replaceAll("2 repair rounds", "some repair rounds");
     assert.ok(validateAgentContract(contractCopy({ agents })).includes("AGENTS.md missing: 2 repair rounds"));
+  });
+
+  it("requires the task contract section and the second-model agreement rule", () => {
+    assert.ok(REQUIRED_SECTIONS.includes("Task contract"));
+    assert.ok(REQUIRED_PHRASES.includes(AGREEMENT));
+    assert.ok(agentsText.includes(AGREEMENT), "the repository's AGENTS.md carries the rule");
+    const noSection = agentsText.replace(/^## Task contract$/m, "## Renamed task section");
+    assert.ok(validateAgentContract(contractCopy({ agents: noSection })).includes("AGENTS.md missing section: Task contract"));
+    const noPhrase = agentsText.replace(AGREEMENT, "A second model's agreement is enough.");
+    assert.deepEqual(validateAgentContract(contractCopy({ agents: noPhrase })), [`AGENTS.md missing: ${AGREEMENT}`]);
   });
 
   it("keeps CLAUDE.md a thin pointer", () => {
