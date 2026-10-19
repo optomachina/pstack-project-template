@@ -114,13 +114,13 @@ Each unit states what it is for and how it is accepted, using the existing issue
 
 - Outcome and why it matters: the issue and the PR Summary.
 - Scope and explicit non-goals: the PR Scope.
-- Raw evidence and authoritative sources: name the rawest data (logs, the database, the drawing, the vendor's own documentation), not a summary of it.
+- Raw evidence and authoritative sources: name the rawest data (logs, the database, the production log, the vendor's own documentation), not a summary of it.
 - Required tools and access: name them and check them before work starts; a missing one is a named blocker, not a guess.
-- Method: what an expert in the problem would do, naming the instrument (a profiler, a database query, a drawing standard).
+- Method: what an expert in the problem would do, naming the instrument (a profiler or a database query).
 - Independent acceptance: trigger, observable outcome, failure condition, and what outside the writer confirms it (a command, a test, an independent verifier).
 - Budget (attempts, time, spend), stopping conditions and escalation: the [repair budget](docs/runbooks/repair-budget.md) and "Completion and failure".
 
-A trivial unit needs only the outcome and one independent acceptance check. Agents may change the approach, but must escalate changes to scope, spending, permissions or consequential commitments. A second model's agreement is review evidence; it never replaces a runnable acceptance check or a test. A specialist reviewer counts only through checks it ran (command, exit status, artifact), never opinions.
+A trivial unit needs only the outcome and one independent acceptance check. Agents may change the approach, but must escalate changes to scope, spending, permissions or consequential commitments. A second model's agreement is review evidence; it never replaces a runnable acceptance check or a test. A specialist role counts through the checks it ran (command, exit status, artifact); reasoned review findings from the required reviewers are review evidence bound to the head SHA; neither replaces a runnable acceptance check.
 
 ## Verification
 
