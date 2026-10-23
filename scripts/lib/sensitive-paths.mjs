@@ -51,7 +51,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync, statSync, accessSync, constants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,6 +76,10 @@ export const LOOSENING_CONFIG_INVALID = "config_invalid";
 export const LOOSENING_MATCHER_CHANGED = "matcher_changed";
 /** Code that applies the list or the gates; editing or deleting one is matcher_changed. */
 export const GATE_CODE_FILES = Object.freeze([
+  "scripts/lib/model-routing.mjs",
+  "scripts/lib/review-completion.mjs",
+  "scripts/lib/review-policy.mjs",
+  "docs/review-policy.json",
   MATCHER_PATH,
   REPORT_RUNNER_PATH,
   "scripts/lib/pstack-config.mjs",
@@ -91,8 +95,21 @@ export const GATE_CODE_FILES = Object.freeze([
 ]);
 /** Error code on a BaseRefError: an explicitly requested base ref cannot be read. */
 export const BASE_REF_UNAVAILABLE = "BASE_REF_UNAVAILABLE";
-// An absolute git path keeps a PR-controlled PATH from substituting git; PSTACK_GIT overrides.
-const GIT = process.env.PSTACK_GIT || (existsSync("/usr/bin/git") ? "/usr/bin/git" : "git");
+/** Resolve only a system-owned executable; the trusted launcher owns PSTACK_GIT.
+ * Never resolve checkout PATH. All canonical ancestors must resist non-root writes. */
+function trustedGitExecutable() {
+  const requested = process.env.PSTACK_GIT ?? '/usr/bin/git';
+  if (!path.isAbsolute(requested)) throw new Error('untrusted_git_executable');
+  const executable = realpathSync(requested);
+  accessSync(executable, constants.X_OK);
+  if (!statSync(executable).isFile()) throw new Error('untrusted_git_executable');
+  for (let current = executable; ; current = path.dirname(current)) {
+    const stat = statSync(current);
+    if (stat.uid !== 0 || (stat.mode & 0o022)) throw new Error('untrusted_git_executable');
+    if (current === path.dirname(current)) break;
+  }
+  return executable;
+}
 
 // ---------------------------------------------------------------------------
 // Globs
@@ -281,7 +298,8 @@ export class BaseRefError extends Error {
   }
 }
 
-const runGit = (root, args) => execFileSync(GIT, args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+/** Run Git through the shared verified system executable, never project PATH. */
+export const runGit = (root, args) => execFileSync(trustedGitExecutable(), args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
 
 /** The commit a ref names. Throws BaseRefError for an empty, option-like or unresolvable ref. */
 export function resolveCommit(root, ref) {

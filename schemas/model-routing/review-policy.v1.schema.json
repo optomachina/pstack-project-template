@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pstack:review-policy:v1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "review-policy.v1"
+    },
+    "version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "ownerHandle": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^@[A-Za-z0-9][\\w.-]*(?:\\/[\\w.-]+)?$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reviewRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "risk": {
+            "enum": [
+              "low",
+              "moderate",
+              "high"
+            ]
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                },
+                "independent": {
+                  "const": true
+                },
+                "crossFamily": {
+                  "type": "boolean"
+                },
+                "binding": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "named"
+                        },
+                        "provider": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                        },
+                        "model": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                        },
+                        "family": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                        },
+                        "explicitEffort": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                        },
+                        "profiles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "uniqueItems": true
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "provider",
+                        "model",
+                        "family",
+                        "explicitEffort",
+                        "profiles"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "capability"
+                        },
+                        "capability": {
+                          "enum": [
+                            "correctness",
+                            "deep"
+                          ]
+                        },
+                        "coverage": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "uniqueItems": true
+                        },
+                        "primaryProfiles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "uniqueItems": true
+                        },
+                        "fallbackProfiles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                          },
+                          "minItems": 0,
+                          "maxItems": 128,
+                          "uniqueItems": true
+                        },
+                        "fallbackWhen": {
+                          "const": "confirmed_unavailable"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "capability",
+                        "coverage",
+                        "primaryProfiles",
+                        "fallbackProfiles",
+                        "fallbackWhen"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "independent",
+                "crossFamily",
+                "binding"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 128,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "risk",
+          "slots"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 3,
+      "maxItems": 128,
+      "uniqueItems": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "family": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "surface": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "parameter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          }
+        },
+        "required": [
+          "profileId",
+          "provider",
+          "model",
+          "family",
+          "surface",
+          "effort",
+          "parameter"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true
+    },
+    "legacyRequirementPolicy": {
+      "const": "preserve-until-transition"
+    }
+  },
+  "required": [
+    "schema",
+    "version",
+    "revision",
+    "enabled",
+    "ownerHandle",
+    "reviewRules",
+    "bindings",
+    "legacyRequirementPolicy"
+  ],
+  "additionalProperties": false
+}

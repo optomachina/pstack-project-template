@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pstack:review-transition-authorization:v1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "review-transition-authorization.v1"
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "ownerHandle": {
+      "type": "string",
+      "pattern": "^@[A-Za-z0-9][\\w.-]*(?:\\/[\\w.-]+)?$"
+    },
+    "reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "transitionDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceReviewDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "observedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$"
+    }
+  },
+  "required": [
+    "schema",
+    "issuer",
+    "ownerHandle",
+    "reference",
+    "transitionDigest",
+    "sourceReviewDigest",
+    "observedAt",
+    "expiresAt"
+  ],
+  "additionalProperties": false
+}

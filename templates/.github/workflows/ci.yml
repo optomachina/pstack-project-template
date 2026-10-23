@@ -16,9 +16,9 @@ name: CI
 # - The gate scripts run from the BASE copy ("Prepare gate from base"), and
 #   they read docs/sensitive-paths.json and pstack.config.json from the base
 #   (--base-ref HEAD^1, via git show), so editing either in the PR does not
-#   change how the PR itself is classified or checked. The head copies are used
-#   only when the base lacks a gate file (the PR that adds the gate, or one that
-#   adds a new gate script); the report then says "from head".
+#   change how the PR itself is classified or checked. Missing legacy gate files
+#   block bootstrap; optional new v2 helpers are copied only when present in base.
+#   PR-head gate code is never substituted as an adoption authority.
 # - This workflow file itself runs from the PR (pull_request uses the merge
 #   ref), so a PR can edit or drop these steps. That is closed only by
 #   .github/CODEOWNERS owning .github/workflows/** and the gate files, plus
@@ -138,14 +138,17 @@ jobs:
         run: |
           set -euo pipefail
           gate="$RUNNER_TEMP/gate"
-          files="scripts/lib/sensitive-paths.mjs scripts/lib/pstack-config.mjs scripts/sensitive-paths-report.mjs scripts/jev-client.mjs scripts/review-gate.mjs scripts/check-journey-tests.mjs"
+          files="scripts/lib/sensitive-paths.mjs scripts/lib/pstack-config.mjs scripts/sensitive-paths-report.mjs scripts/jev-client.mjs scripts/review-gate.mjs scripts/check-journey-tests.mjs scripts/lib/model-routing.mjs scripts/lib/review-policy.mjs scripts/lib/review-completion.mjs scripts/check-pr-body.mjs"
           source=base
           for file in $files; do
-            git cat-file -e "HEAD^1:$file" 2>/dev/null || source=head
-          done
-          for file in $files; do
+            if ! git cat-file -e "HEAD^1:$file" 2>/dev/null; then
+              case "$file" in
+                scripts/lib/model-routing.mjs|scripts/lib/review-policy.mjs|scripts/lib/review-completion.mjs) continue ;;
+                *) echo "Base gate missing: $file; explicit owner-governed bootstrap required" >&2; exit 1 ;;
+              esac
+            fi
             mkdir -p "$gate/$(dirname "$file")"
-            if [ "$source" = base ]; then git show "HEAD^1:$file" > "$gate/$file"; else cp "$file" "$gate/$file"; fi
+            git show "HEAD^1:$file" > "$gate/$file"
           done
           echo "Gate scripts taken from: $source (configs are read from HEAD^1 by the scripts)"
           git diff --name-status -z --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.z"

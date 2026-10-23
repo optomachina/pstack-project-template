@@ -1,0 +1,322 @@
+# Model routing A0 — proposed and inactive
+
+This is an isolated offline contract draft. Nothing loads it into a controller,
+changes a project default, starts a provider, or makes a review pass. Treat the
+entire unit as governance: independent Opus and applicable project reviews remain
+required. GPT plan review is not named Claude review. Do not land this as ordinary
+low-risk documentation or scripts. A1 must first reserve and protect every routing
+schema, registry/configuration, resolver and documentation path and separately
+review sync/consumer integration. Existing review rules are unchanged.
+
+## API and trust boundary
+
+`model-routing.mjs` exports `schemas`, `validate(name, value)`, `canonicalJSON`,
+`digest`, and `resolveRouting({policy, catalog, trustedContext, request, override?, now})`.
+Names accepted by `validate` are policy, override, catalog, request, receipt and
+context. Every nested object is closed; there are no implicit policy defaults.
+`override` may be absent or null. All other top-level inputs are mandatory.
+
+Only `request` is untrusted request data. An authenticated controller must load the
+other inputs from approved control-plane state, authenticate evidence issuers,
+resolve the authoritative risk/review policy, and establish ownership. Never merge
+request fields into trusted context. A digest proves content equality, not approval,
+entitlement, caller identity, provenance or resource reservation. A0 checks declared
+bindings and temporal validity only; synthetic evidence never proves live access.
+
+The request repeats context's project/repository, exact source/base SHA, unit,
+attempt, owner, role, risk and policy/review-policy/catalog digests. Disagreement,
+including differing ordered capabilities/actions, blocks. `snapshotRevision` pins
+the controller snapshot. The controller supplies immutable `writer` provenance,
+the explicit `existingContributors` array, and all mandatory review obligations.
+Empty obligations are appropriate only when the authenticated review policy
+requires none; the resolver cannot infer the real
+review graph from its digest. Request data cannot add or remove obligations.
+
+Every obligation requires a closed `subject` union. A `planned_output` subject names
+this context's `unitId` and `attemptId`; an `existing_artifact` subject names this
+context's exact `sourceSha` and the immutable artifact's `artifactDigest`. Missing,
+ambiguous or mismatched subjects block. The authenticated controller establishes
+the artifact digest and complete contributor provenance; A0 does not read artifact
+bytes or infer authors from Git. The request cannot redefine subjects or authors.
+
+For either subject, required execution/family independence is checked against
+`writer` and every `existingContributors` identity. For planned output, it is also
+checked against `context.execution`, the new producer. Every eligible worker candidate
+must exactly match that pinned execution ID/provider/family before the resolver can
+return `planned`, so this includes the selected producer even when the prior author
+differs. For an existing artifact, the current reviewing execution is not treated
+as its author merely because it is the current job; a reviewer-role execution may
+legitimately match the review plan while remaining independent of all artifact
+authors. An existing-artifact obligation does not cover future output. The trusted
+review policy must explicitly require a planned-output obligation when needed.
+
+A request's mode must be `new` to produce a plan. `running` and `handoff` are
+recognized negative cases returning `integration_deferred`. A new approved policy
+may select another provider for a new job with newly bound execution context and
+evidence. Existing jobs retain their snapshots. Actual checkpoint authorization,
+old-worker quiescence/fencing, uncertain tool reconciliation and exactly-once
+resumption belong to the controller, not this library.
+
+## Resolution
+
+1. Validate all input shapes, injected UTC time, policy/catalog validity and exact
+   request/context/content bindings. Reject duplicate IDs, ambiguous role/risk
+   rules or exact catalog keys, unresolved references and model `latest` aliases.
+2. Match exactly one role/risk rule. An override must be allowed, scoped, current,
+   unused and bound to an authenticated authorization record and policy digest.
+   Its ordered candidates must be in both the rule and override envelope. Budgets
+   may only tighten. Reject the whole invalid override; never silently restore a
+   baseline or partially apply it. A caller may separately request baseline planning.
+3. Check the inherited budget deadline, consumed amounts and repair/replan counters.
+   The supported ceilings are finite tokens, wall-time milliseconds and attempts.
+   The combined repair ceiling is at most two, no-progress ceiling at most two,
+   and materially similar failures ceiling at most three. Infrastructure-failure
+   classification is the trusted controller's responsibility.
+4. Plan every mandatory review, enforcing exact provider/model/family, explicit
+   effort where required, subject-bound execution independence and family
+   independence against every relevant author, including the new producer for
+   planned output.
+   A mandatory service step additionally requires a fresh confirmed service record;
+   an agent's claim or prediction score is not such evidence. Plans are never
+   completed reviews, including when synthetic service evidence is supplied.
+5. Walk only the explicitly eligible candidate list, promoting a requested profile
+   only within that list. Record rejected candidates; take the first eligible route
+   whose reservation plus all review reservations fits remaining budgets/deadline.
+   There is no retry, automatic escalation or paid/API fallback.
+
+Each candidate needs fresh capability, availability and included-subscription
+entitlement evidence. The evidence scope is the catalog entry ID and its digest
+covers the complete exact provider/model/family/surface/runtime/adapter record.
+All three records must agree on execution ID. Main execution must match the trusted
+execution identity; review execution must meet its independence predicates.
+A case-insensitive `latest` token is rejected at the start/end or beside any
+allowed model-identifier delimiter (`-`, `_`, `.`, `:`, `/`), including mixed
+delimiters in the middle. Embedded substrings such as `latestish` are not alias
+tokens. This lexical guard supplements trusted catalog provenance; accepting a
+name alone does not establish that a vendor's identifier is immutable.
+
+The catalog key is provider/model/surface/runtimeVersion/adapterVersion. Changing
+any record requires fresh evidence/content bindings, not a compatibility guess.
+
+Evidence timestamps must bracket `now`; expiry is exclusive. Maximum evidence age
+is inclusive and applies separately to each selected record. Policy, catalog,
+entry, override and authorization validity are also checked. Budget evidence uses
+the unit ID as scope and `digest(context.budget)` as digest, including its evidence
+reference. Service evidence uses obligation ID and `digest(obligation)`. The
+controller authenticates issuer/reference semantics; A0 does not fetch references.
+
+Effort is one of `{kind: "explicit", value}`, `{kind: "intent", mappingId, intent}`,
+or `{kind: "omit"}`. Explicit effort must be exactly supported. Intent requires an
+explicitly approved, catalog-versioned mapping; no nearest-value conversion occurs.
+Omission requires policy permission and catalog support and cannot meet an explicit
+effort obligation. `unknown` is never a supported requested effort. Catalog entries
+with no native control use `parameter: null`, empty supported/mapping arrays and
+explicit omission. Multi-agent records (`agentCount > 1`) are conservatively blocked
+in A0; no delegation/resource authorization is inferred from an effort label.
+
+## Receipts and limitations
+
+Receipts have only `planned` or `blocked`, with `compliance: "unverified"`.
+The receipt schema deliberately restricts states to A0; later lifecycle states need
+separate versioned integration work. It preserves request/context/policy/catalog/
+override digests, source bindings, snapshot revision, inherited budget counters,
+applied ceiling, review plans and bounded rejection reasons. Each review plan
+retains its exact subject and `independenceAuthors` identities. Duplicate identical
+author identities are recorded once. These provenance fields remain unverified
+controller declarations, not a completed review receipt. Requested profile and
+original requested effort are separate from selected profile/requested effort and
+`plannedEmission`. Actual `emittedEffort` and every `observedEffective` field remain
+`unknown`. A high-effort plan cannot certify high effective effort. Authorized
+omission can be planned with selected exact identity while effective effort remains
+unknown; even that identity has not been observed at runtime by A0.
+
+Evidence summaries retain issuer/reference, scope/digest, timestamps, calculated age,
+execution identity and subscription classification. No arbitrary provider response,
+command, endpoint, environment or credential field is accepted. Errors contain
+fixed codes, not validation payloads. Unresolved request identifiers are not echoed.
+Inputs and outputs must contain identifiers/references, never credentials. A0 cannot
+recognize a secret deliberately disguised as an otherwise valid trusted identifier.
+
+Budget reservations are conservative caller-supplied estimates, not measurements.
+All review reservations are summed with the worker reservation. Review choices are
+greedy in listed order; A0 may block a feasible combination instead of searching
+combinations. It never overcommits knowingly. Atomic budget/ownership reservation,
+policy compare-and-swap, revocation, live observations, named-review completion,
+command classification/serialization and active-worker safety remain unimplemented.
+No source SHA/digest can substitute for those checks.
+
+## Schemas and canonicalization
+
+The six files are JSON Schema 2020-12 documents with a deliberately bounded subset:
+`$schema`, `$id`, `type`, `properties`, `required`, `additionalProperties: false`,
+`oneOf`, `const`, `enum`, `items`, `minItems`, `maxItems`, `uniqueItems`, `minLength`,
+`maxLength`, `pattern`, `format: date-time`, `minimum`, and `maximum`.
+The runtime interpreter implements these bundled documents only. It is **not** a
+complete JSON Schema validator and accepts no external schemas. Tests compare the
+embedded copies byte-structurally to the files and reject unsupported keywords;
+they exercise every populated object's closure and required fields. No independent
+full JSON Schema engine is added or claimed as validation evidence.
+
+Canonical JSON sorts object keys using JavaScript UTF-16 lexical order, preserves
+array order, uses ECMAScript JSON string/number serialization (`-0` becomes `0`),
+and hashes the UTF-8 bytes with SHA-256. No Unicode normalization is performed.
+Only well-formed Unicode and plain JSON data are accepted: reject undefined,
+nonfinite numbers, sparse arrays, accessors, symbols, cycles and exotic objects.
+Numeric limits/counters are nonnegative safe integers. Inputs must be deserialized
+JSON, not executable objects/Proxies. The resolver reads no filesystem, network,
+environment, process, credential or implicit clock; Node crypto is its only import.
+
+Timestamps are exactly `YYYY-MM-DDTHH:mm:ssZ`, valid calendar dates, with seconds
+00–59. Offsets, fractional seconds, leap seconds and invalid dates are rejected.
+There is no hidden current-time fallback. Identity/reference strings use bounded
+ASCII identifier syntax; arbitrary natural language belongs outside this contract.
+
+## Offline verification and deferred acceptance
+
+Run `node --test scripts/lib/model-routing.node-test.mjs` and the unchanged
+`node --test scripts/review-gate.node-test.mjs`. All fixture identities and evidence
+are fictional. No current vendor support tables, credentials or entitlement probes
+are included. The Researcher/Jev recommendations inform semantics, not live facts.
+
+A0 tests cover ARCH-R01–R10, R21 (missing input), R24 (synthetic service evidence),
+R25 (bounded output) and R28 (unchanged regression suite). They include relevant
+JEV effort/surface/version, budget, override, review, omission and replan cases.
+ARCH-R16's offline portion demonstrates unverified effective effort; actual runtime
+observation is deferred. Explicit skipped cases identify controller/adapter/sync
+acceptance; mocks do not turn those into passes.
+
+Repair round 1 adds same-execution and same-family regressions for both subject
+types, additional-contributor conflicts, exact subject bindings, selected-producer
+identity and a valid existing-artifact reviewer job. Removing the planned producer
+or existing contributors from independence checks must turn those regressions red;
+blanket treatment of the current reviewer as an existing-artifact author must also
+fail the positive cases. The original head's passing tests did not cover this defect.
+
+Repair round 2 covers `latest` tokens across every allowed delimiter, at either
+end or in the middle, for both worker and review entries and mixed letter case.
+Pinned identifiers and non-token substrings remain accepted. Reinstating the old
+incomplete delimiter check must make these alias regressions fail.
+
+Temporary guard-removal checks must make negative tests fail, followed by exact
+source restoration and a passing rerun. Independent QA and named-provider review
+are still required at the exact draft head. No PR boundary preflight, live adapter
+validation, sync, activation or merge is claimed by these unit tests. The cohesive
+schemas/resolver/fixtures exceed the usual small-PR guideline; keep this draft as
+one reviewable contract unit, then scope later integrations separately.
+
+## Capability transition T1 (inactive v2)
+
+`resolveRoutingV2` is explicit opt-in. V1 schemas and named binding behavior remain
+readable and unchanged. V2 policy/context/catalog/receipt schemas are separate;
+the request retains the closed v1 shape because it only references policy digests.
+V2 overrides currently block explicitly; v1 override behavior is unchanged.
+
+The trusted policy supplies `reviewRules` for every risk. Moderate risk retains a
+correctness slot; high retains correctness and a distinct deep slot. Extra slots
+can be required. A slot has a closed binding union: `named` pins exact identity
+and native effort; `capability` lists primary/fallback profiles and required
+coverage. A fallback is eligible only when every primary has fresh, digest-bound
+availability evidence explicitly marked unavailable with a failure code. Reset
+hints are recorded, never treated as restored availability. Unknown or stale quota
+cannot trigger fallback. No retry calls are performed by the planner.
+
+Catalog entries declare approved coverage. Profiles pin native effort; the planner
+never translates Claude high into GPT xhigh. The completed attempt's requested
+identity is its selected approved binding; earlier unavailable attempts retain
+separate receipts. Distinct slots need distinct execution IDs. V2 also rejects
+same-provider relabeling when cross-family diversity is required. It does not
+remove or reinterpret an existing named or cross-family obligation.
+
+V2 catalog entries may represent separately evidenced execution bindings for the
+same exact model/surface/runtime/adapter tuple. Their contracts must match except
+for entry ID, and their evidence is separately scoped. This permits two independent
+Astra sessions for two required slots without inventing different model families.
+The projection into shared v1 checks is internal: original input/entry digests are
+validated before projection and original digests are preserved in v2 receipts.
+Every supplied capability, availability and entitlement proof must bind the complete
+original entry, including review capabilities and coverage; a projected-entry hash
+is rejected. Catalog and completion identities reject case-insensitive `unknown`
+provider, model, family and effort values even when all declarations agree.
+
+`validateReviewCompletions` consumes a v2 plan, strict completion receipts and a
+separate strict authenticated-controller context. Acceptance means the supplied
+authenticated declarations are consistent, not that this library authenticated a
+provider, read an output artifact or mutated replay/budget state. The caller must
+authenticate each observation issuer and bind its receipt/result digest and runtime
+identity to genuine evidence. Requested values alone cannot satisfy this check.
+
+Only existing-artifact reviews can complete: bind the actual produced head,
+artifact/diff digest and authors in a fresh plan first. A planned-output receipt
+cannot certify a not-yet-produced artifact. Required observations must be known and
+match the planned provider/model/family/effort, adapter and executor. Missing/stale
+receipts, duplicate slots/outputs/executions, unresolved actionable findings and
+failed/skipped/timed-out tests block. Required tests must name the exact head.
+
+Completion context carries pre-batch cumulative consumption (including prior
+failed attempts), unchanged-or-tighter ceilings and inherited counters. Submitted
+receipt usage is added once for this batch; the controller must atomically consume
+it and persist replay IDs after acceptance. Neither planning nor this validator
+reserves resources. The 19 original runtime integration deferrals remain open.
+
+## Template adoption and distribution
+
+T2 protects every routing schema, fixture, policy and runbook as governance and adds
+Code Owner coverage. T3 distributes the helpers and schemas as managed files, while
+`docs/review-policy.json` is a project-owned seed: initial `enabled: false`, unresolved
+owner, no runtime evidence. Existing policies, extra obligations, project blocks,
+external routing choices and additional sensitive classes are preserved. Sync is
+not adoption, and dry-run writes nothing.
+
+The base-governed gate additionally binds current Git base/head, `digest({treeSha})`
+as the committed artifact identity, and `digest(rawBinaryDiffText)` as the diff
+identity (`git diff --binary --no-ext-diff --ignore-submodules=none base head`, including its final newline).
+Its adoption patch uses that same diff convention. The generic pure planner still
+accepts authenticated caller artifact digests; the template gate fixes a concrete
+Git convention. Working-tree changes are not a substitute for a committed head.
+The gate derives the complete file inventory and line counts from those committed
+revisions, ignoring caller file/size hints. Rename detection is disabled so deleted
+and renamed sensitive source paths remain classified. Base configuration supplies
+size exclusions. All current/adoption patch, inventory and size diff commands
+explicitly use `--ignore-submodules=none`, so repository or local ignore settings
+cannot hide committed gitlink changes. Source-review repository identity must equal the transition
+target, and current policy, context and request must bind that same repository.
+
+The template CLI's v1 lane remains compatible. `--contract v2` blocks without the
+separate authenticated adoption/completion package; live CI transport/admission is
+not wired by this patch. New dependencies are copied from base only. Missing legacy
+gate code blocks bootstrap and requires a separate owner-governed transition, never
+an automatic PR-head substitution. No current review is silently reclassified.
+
+
+### Boundary-hardening draft contract
+
+The inactive v2 receipt now requires `appliedCounterLimits`, copied from the
+approved policy's `maxRepairRounds`, `maxNoProgress` and `maxSimilarFailures`.
+Blocked plans carry null; completion rejects null, missing or altered bound limits.
+Completion maxima may only stay equal or tighten, counters cannot reset, and
+reaching any applicable limit blocks. Earlier unpublished v2 receipts lacking this
+field are rejected; v1 receipts retain their original contract. These checks do not
+replace the controller's atomic budget/replay persistence.
+
+Every gate Git operation uses the base-verified sensitive-paths helper, including
+ancestry, base reads, commit/tree resolution, both patches, inventory and size.
+It never searches PATH. The default is `/usr/bin/git`; a trusted launcher may set
+`PSTACK_GIT` only to an absolute executable whose canonical file and ancestors are
+root-owned and not group/world-writable. Missing or unverified executables block.
+A checkout-local executable is never a supported override. The trusted launcher
+must protect the override, Git/Node installation and environment; these checks do
+not defend against a compromised host, root or controller, nor claim to sanitize
+all Git environment variables or authenticate review issuers.
+
+Raw current and adoption patches use `--binary --no-ext-diff --no-textconv
+--ignore-submodules=none`, preserving the final newline. Text conversion is a
+presentation feature and cannot enter evidence identity. Inventory retains
+`--no-renames` and NUL-delimited paths; size retains base-configured exclusions.
+Any old proposal or source-review digest must be rebound and independently reviewed
+under this convention before use; this patch creates no authorization.
+
+Owner syntax supports the configured `@user` and `@org/team` forms in both policy
+and transition authorization. Enabled policy/configuration and authenticated
+owner declarations must still agree exactly. Team syntax does not authenticate
+membership or authority; the controller must authenticate the authorizing actor.
+The disabled null-owner seed remains unchanged.

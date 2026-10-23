@@ -62,3 +62,9 @@ Sensitive classes:
 ## Review findings
 
 <!-- Final head SHA, reviewers that completed on that head, open threads and their dispositions. A missing or stale review is not a clean review. -->
+
+<!-- Adopted v2 only: omit the legacy Review tier field. Record Review risk,
+Review obligations, Review policy (base digest), and one Review receipt:
+<id> <digest> <https://... or artifact:...> per accepted exact-head completion.
+A link or requested model is not an observed identity or a completed review.
+The disabled template seed and this comment do not adopt the transition. -->

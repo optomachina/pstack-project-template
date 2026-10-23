@@ -263,3 +263,97 @@ describe("the template repository itself", () => {
     assert.equal(read(repoRoot, "scripts/fixtures/pstack-config/template.json"), read(repoRoot, "pstack.config.json"));
   });
 });
+
+describe('capability contract distribution',()=>{
+  it('seeds disabled routing and preserves project policy, extra obligations and runtime choices',()=>{
+    const target=configuredTarget({name:'Acme',owner:'Dana',ownerHandle:'@acme/platform'});
+    syncTemplate({target});
+    const policy=JSON.parse(read(target,'docs/review-policy.json'));
+    assert.equal(policy.enabled,false);assert.equal(policy.ownerHandle,null);
+    policy.reviewRules[2].slots.push({...structuredClone(policy.reviewRules[2].slots[1]),id:'project-audit',crossFamily:true});
+    const custom=JSON.stringify(policy);writeFileSync(join(target,'docs/review-policy.json'),custom);
+    writeFileSync(join(target,'pstack.routing.json'),'project-owned-disabled-config');
+    const first=syncTemplate({target,dryRun:true});
+    assert.equal(read(target,'docs/review-policy.json'),custom);
+    syncTemplate({target});
+    assert.equal(read(target,'docs/review-policy.json'),custom);
+    assert.equal(read(target,'pstack.routing.json'),'project-owned-disabled-config');
+    assert.equal(first.actions.find(a=>a.path==='docs/review-policy.json').action,'kept');
+    const second=syncTemplate({target});
+    assert.ok(second.actions.filter(a=>a.path!==VERSION_FILE).every(a=>['unchanged','kept'].includes(a.action)));
+  });
+});
+
+// Boundary unit: enabled team adoption and selective distribution controls.
+{
+const {test}=await import('node:test');
+const {readdirSync}=await import('node:fs');
+const {createHash}=await import('node:crypto');
+const {dirname}=await import('node:path');
+const {parsePstackConfig}=await import('./lib/pstack-config.mjs');
+const {validateV2}=await import('./lib/model-routing.mjs');
+const source=repoRoot, root=tempDir('boundary-sync-');
+const fixtureDir=label=>tempDir('boundary-'+label+'-');
+const write=(dir,name,content)=>{mkdirSync(dirname(join(dir,name)),{recursive:true});writeFileSync(join(dir,name),content);};
+test('BH F3: policy adoption must retain supported @org/team ownership',()=>{
+  const dir=fixtureDir('team-owner');
+  const config=JSON.parse(readFileSync(join(source,'pstack.config.json')));
+  config.project={...config.project,name:'IndependentFixture',owner:'Fixture Owner',ownerHandle:'@acme/platform'};
+  assert.equal(parsePstackConfig(JSON.stringify(config)).project.ownerHandle,'@acme/platform');
+  write(dir,'pstack.config.json',JSON.stringify(config));
+  syncTemplate({target:dir,templateRoot:source});
+  assert.deepEqual(validateAgentContract(dir),[]);
+  const policy=JSON.parse(readFileSync(join(dir,'docs/review-policy.json')));
+  policy.enabled=true;policy.ownerHandle=config.project.ownerHandle;
+  write(dir,'docs/review-policy.json',JSON.stringify(policy));
+  const validation=validateV2('reviewPolicy',policy),contractErrors=validateAgentContract(dir);
+  writeFileSync(join(root,'finding-team-owner.json'),JSON.stringify({
+    fixture:dir,ownerHandle:config.project.ownerHandle,validation,contractErrors
+  },null,2)+'\n');
+  assert.equal(validation.valid,true,JSON.stringify({validation,contractErrors}));
+  assert.deepEqual(contractErrors,[]);
+});
+
+test('BH control: selective sync preserves project policy, configuration, prose and custom sensitive rules',()=>{
+  const dir=fixtureDir('sync');
+  const config=JSON.parse(readFileSync(join(source,'pstack.config.json')));
+  config.project={...config.project,name:'IndependentFixture',owner:'Fixture Owner',ownerHandle:'@acme/platform'};
+  write(dir,'pstack.config.json',JSON.stringify(config));
+  syncTemplate({target:dir,templateRoot:source});
+  const policy=JSON.parse(readFileSync(join(dir,'docs/review-policy.json')));
+  const slot=structuredClone(policy.reviewRules[2].slots[1]);slot.id='extra-audit';slot.crossFamily=true;
+  policy.reviewRules[2].slots.push(slot);
+  const exactPolicy=JSON.stringify(policy);write(dir,'docs/review-policy.json',exactPolicy);
+  write(dir,'pstack.routing.json','custom external selection\n');
+  const list=JSON.parse(readFileSync(join(dir,'docs/sensitive-paths.json')));
+  list.globs.push({glob:'custom/**',class:'infra_ci'});
+  write(dir,'docs/sensitive-paths.json',JSON.stringify(list));
+  const agents=readFileSync(join(dir,'AGENTS.md'),'utf8').replace('<!-- project:begin project-rules -->',
+    '<!-- project:begin project-rules -->\nPreserve this project review condition.');
+  write(dir,'AGENTS.md',agents);
+  const snapshot=()=>gitSnapshot(dir);
+  const before=snapshot();syncTemplate({target:dir,templateRoot:source,dryRun:true});assert.deepEqual(snapshot(),before);
+  syncTemplate({target:dir,templateRoot:source});
+  assert.equal(readFileSync(join(dir,'docs/review-policy.json'),'utf8'),exactPolicy);
+  assert.equal(readFileSync(join(dir,'pstack.config.json'),'utf8'),JSON.stringify(config));
+  assert.equal(readFileSync(join(dir,'pstack.routing.json'),'utf8'),'custom external selection\n');
+  assert.match(readFileSync(join(dir,'AGENTS.md'),'utf8'),/Preserve this project review condition/);
+  assert.ok(JSON.parse(readFileSync(join(dir,'docs/sensitive-paths.json'))).globs.some(x=>x.glob==='custom/**'));
+  const next=syncTemplate({target:dir,templateRoot:source});
+  assert.ok(next.actions.filter(x=>x.path!=='.pstack-template-version').every(x=>['kept','unchanged'].includes(x.action)));
+});
+
+function gitSnapshot(dir) {
+  const entries={};
+  const visit=(folder,prefix='')=>{
+    for(const item of readdirSync(folder,{withFileTypes:true})) {
+      const name=prefix+item.name, file=join(folder,item.name);
+      if(item.isDirectory())visit(file,name+'/');
+      else entries[name]=createHash('sha256').update(readFileSync(file)).digest('hex');
+    }
+  };
+  visit(dir);return entries;
+}
+
+
+}

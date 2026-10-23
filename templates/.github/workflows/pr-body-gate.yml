@@ -55,21 +55,24 @@ jobs:
         with:
           node-version: 22
 
-      # Base copy of the gate scripts, as in ci.yml (same file-list rule); head
-      # copy only when the base lacks one of them.
+      # Base copy of the gate scripts, as in ci.yml (same file-list rule); no
+      # head substitution; missing legacy gates require explicit bootstrap.
       - name: Prepare gate from base
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           gate="$RUNNER_TEMP/gate"
-          files="scripts/lib/sensitive-paths.mjs scripts/lib/pstack-config.mjs scripts/jev-client.mjs scripts/review-gate.mjs scripts/check-journey-tests.mjs scripts/check-pr-body.mjs"
+          files="scripts/lib/sensitive-paths.mjs scripts/lib/pstack-config.mjs scripts/jev-client.mjs scripts/review-gate.mjs scripts/check-journey-tests.mjs scripts/check-pr-body.mjs scripts/lib/model-routing.mjs scripts/lib/review-policy.mjs scripts/lib/review-completion.mjs"
           source=base
           for file in $files; do
-            git cat-file -e "HEAD^1:$file" 2>/dev/null || source=head
-          done
-          for file in $files; do
+            if ! git cat-file -e "HEAD^1:$file" 2>/dev/null; then
+              case "$file" in
+                scripts/lib/model-routing.mjs|scripts/lib/review-policy.mjs|scripts/lib/review-completion.mjs) continue ;;
+                *) echo "Base gate missing: $file; explicit owner-governed bootstrap required" >&2; exit 1 ;;
+              esac
+            fi
             mkdir -p "$gate/$(dirname "$file")"
-            if [ "$source" = base ]; then git show "HEAD^1:$file" > "$gate/$file"; else cp "$file" "$gate/$file"; fi
+            git show "HEAD^1:$file" > "$gate/$file"
           done
           echo "Gate scripts taken from: $source (configs are read from HEAD^1 by the scripts)"
           git diff --name-status -z --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.z"

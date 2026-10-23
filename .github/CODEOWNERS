@@ -37,6 +37,12 @@
 /scripts/deploy*                    {{OWNER_HANDLE}}
 /scripts/release*                   {{OWNER_HANDLE}}
 
+/schemas/model-routing/             {{OWNER_HANDLE}}
+/docs/review-policy.json             {{OWNER_HANDLE}}
+/docs/runbooks/model-routing.md      {{OWNER_HANDLE}}
+/docs/runbooks/review-gates.md        {{OWNER_HANDLE}}
+/scripts/fixtures/model-routing/     {{OWNER_HANDLE}}
+
 # <!-- project:begin codeowners -->
 # Project-specific owners go here.
 # <!-- project:end codeowners -->

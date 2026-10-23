@@ -1,0 +1,133 @@
+{
+  "schema": "review-policy.v1",
+  "version": 1,
+  "revision": "capability-draft-1",
+  "enabled": false,
+  "ownerHandle": null,
+  "reviewRules": [
+    {
+      "risk": "low",
+      "slots": []
+    },
+    {
+      "risk": "moderate",
+      "slots": [
+        {
+          "id": "correctness",
+          "independent": true,
+          "crossFamily": false,
+          "binding": {
+            "kind": "capability",
+            "capability": "correctness",
+            "coverage": [
+              "contracts",
+              "invalid-input",
+              "tests",
+              "documentation",
+              "regressions"
+            ],
+            "primaryProfiles": [
+              "sonnet-correctness"
+            ],
+            "fallbackProfiles": [
+              "astra-correctness"
+            ],
+            "fallbackWhen": "confirmed_unavailable"
+          }
+        }
+      ]
+    },
+    {
+      "risk": "high",
+      "slots": [
+        {
+          "id": "correctness",
+          "independent": true,
+          "crossFamily": false,
+          "binding": {
+            "kind": "capability",
+            "capability": "correctness",
+            "coverage": [
+              "contracts",
+              "invalid-input",
+              "tests",
+              "documentation",
+              "regressions"
+            ],
+            "primaryProfiles": [
+              "sonnet-correctness"
+            ],
+            "fallbackProfiles": [
+              "astra-correctness"
+            ],
+            "fallbackWhen": "confirmed_unavailable"
+          }
+        },
+        {
+          "id": "deep",
+          "independent": true,
+          "crossFamily": false,
+          "binding": {
+            "kind": "capability",
+            "capability": "deep",
+            "coverage": [
+              "security",
+              "data-money",
+              "architecture",
+              "concurrency",
+              "gate-integrity",
+              "sensitive-files",
+              "adversarial-evidence"
+            ],
+            "primaryProfiles": [
+              "opus-deep"
+            ],
+            "fallbackProfiles": [
+              "astra-deep"
+            ],
+            "fallbackWhen": "confirmed_unavailable"
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "profileId": "sonnet-correctness",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "family": "anthropic",
+      "surface": "claude-code",
+      "effort": "high",
+      "parameter": "effort"
+    },
+    {
+      "profileId": "opus-deep",
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "family": "anthropic",
+      "surface": "claude-code",
+      "effort": "high",
+      "parameter": "effort"
+    },
+    {
+      "profileId": "astra-correctness",
+      "provider": "openai",
+      "model": "gpt-6-astra",
+      "family": "openai",
+      "surface": "gpt-subscription-tool",
+      "effort": "xhigh",
+      "parameter": "reasoning_effort"
+    },
+    {
+      "profileId": "astra-deep",
+      "provider": "openai",
+      "model": "gpt-6-astra",
+      "family": "openai",
+      "surface": "gpt-subscription-tool",
+      "effort": "xhigh",
+      "parameter": "reasoning_effort"
+    }
+  ],
+  "legacyRequirementPolicy": "preserve-until-transition"
+}

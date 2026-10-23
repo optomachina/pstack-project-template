@@ -79,6 +79,12 @@
     { "glob": "scripts/sync-template*", "class": "infra_ci" },
     { "glob": "scripts/gate-workflows*", "class": "infra_ci" },
 
+    {"glob": "schemas/model-routing/**", "class": "infra_ci"},
+    {"glob": "docs/review-policy.json", "class": "infra_ci"},
+    {"glob": "docs/runbooks/model-routing.md", "class": "infra_ci"},
+    {"glob": "docs/runbooks/review-gates.md", "class": "infra_ci"},
+    {"glob": "scripts/fixtures/model-routing/**", "class": "infra_ci"},
+
     { "glob": "**/package.json", "class": "deps" },
     { "glob": "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,deno.lock}", "class": "deps" },
     { "glob": "**/requirements*.txt", "class": "deps" },

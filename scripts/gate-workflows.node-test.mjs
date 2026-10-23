@@ -164,7 +164,7 @@ describe("gate workflows", () => {
     });
   }
 
-  it("falls back to the head copy only when the base lacks a gate script", () => {
+  it("blocks bootstrap instead of executing head gate code when legacy base scripts are absent", () => {
     const dir = tempDir("gate-bootstrap-");
     git(dir, "init", "-q");
     write(dir, "README.md", "before the gate\n");
@@ -174,7 +174,12 @@ describe("gate workflows", () => {
     write(dir, "pstack.config.json", read(repoRoot, PSTACK_FIXTURE));
     git(dir, "add", "-A");
     git(dir, "commit", "-qm", "add the gate");
-    for (const workflow of WORKFLOWS) assert.match(prepare(dir, workflow).stdout, /Gate scripts taken from: head/);
+    for (const workflow of WORKFLOWS) {
+      const runnerTemp=tempDir('blocked-bootstrap-');
+      const proc=spawnSync('bash',['-e','-c',runBlock(read(repoRoot,workflow),'Prepare gate from base')],{cwd:dir,encoding:'utf8',env:{...process.env,RUNNER_TEMP:runnerTemp}});
+      assert.notEqual(proc.status,0);
+      assert.match(proc.stderr,/explicit owner-governed bootstrap required/);
+    }
   });
 });
 
@@ -200,6 +205,11 @@ describe("code owners", () => {
     ".github/CODEOWNERS",
     ".github/pull_request_template.md",
     SENSITIVE_PATHS_FILE,
+    "schemas/model-routing/policy.v2.schema.json",
+    "docs/review-policy.json",
+    "docs/runbooks/model-routing.md",
+    "docs/runbooks/review-gates.md",
+    "scripts/fixtures/model-routing/synthetic.mjs",
     "pstack.config.json",
     PSTACK_FIXTURE,
     "AGENTS.md",

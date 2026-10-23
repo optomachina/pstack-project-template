@@ -13,6 +13,7 @@
  * Exit codes: 0 valid, 1 contract errors.
  */
 import fs from "node:fs";
+import { validateV2 } from "./lib/model-routing.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -108,6 +109,15 @@ export function validateAgentContract(repoRoot = root) {
         if (found) errors.push(`${name} still has template placeholders: ${[...new Set(found)].join(", ")}`);
       }
     }
+  }
+  const policyPath = path.join(repoRoot, 'docs/review-policy.json');
+  if (agents?.includes('docs/review-policy.json') && !fs.existsSync(policyPath)) errors.push('docs/review-policy.json is missing');
+  if (fs.existsSync(policyPath)) {
+    try {
+      const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+      if (!validateV2('reviewPolicy', policy).valid) errors.push('docs/review-policy.json is invalid');
+      else if (policy.enabled && (!policy.ownerHandle || policy.ownerHandle !== config?.project?.ownerHandle)) errors.push('enabled review policy requires a verified matching project ownerHandle');
+    } catch { errors.push('docs/review-policy.json is invalid'); }
   }
   return errors;
 }

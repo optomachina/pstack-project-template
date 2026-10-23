@@ -79,3 +79,76 @@ A valid N/A is rare: a copy-only or style-token change already covered by a name
 ## PR body (`scripts/check-pr-body.mjs`)
 
 Requires `preflight: <stage> PASS|SKIP` lines (no FAIL), `Journey test:`, `Review tier:` and `Sensitive classes:`. For a sensitive PR it requires `Review tier: opus` and every sensitive class.
+
+## Capability contract v2 — disabled until base-governed adoption
+
+The v1 chain above remains effective for unchanged consumers and historical
+receipts. `docs/review-policy.json` is a strict, project-owned disabled seed, not an
+activation. Once separately adopted, correctness and deep are obligations; approved
+Sonnet and Opus remain preferred, with explicitly eligible Astra xhigh subscription
+bindings only after confirmed primary unavailability. These native efforts are
+independent declarations, not a conversion between providers. No catalog record or
+live entitlement is seeded. Normal risk keeps correctness; risky keeps correctness
+plus a different deep-review execution. Extra project obligations remain required.
+
+`runReviewGateV2` loads policy and configuration exclusively from a committed base,
+and verifies that its complete executing code bundle matches that base. It requires
+a separate authenticated adoption package and exact-head source review evidence.
+The owner transition names old/new policy digests, exact base/head/patch, approved
+bindings and preserved independence/diversity predicates. Its source review must
+have separately observed Astra xhigh identity and pass the completion validator.
+The adopting commit must be in base history. Boolean bypasses and head-policy
+fallbacks are not supported. Authority/issuer authentication belongs to the existing
+controller; matching hashes alone do not create authorization.
+
+The CLI `--contract v2` is fail-closed without that authenticated controller package;
+this patch does not transport live authorization through CI or enable v2. The
+existing v1 workflow/check names and required conditions remain intact. A subsequent
+reviewed adapter must call the v2 API from a base-prepared bundle. The bundle includes
+the strict policy, routing and completion helpers; a PR's head code cannot be used
+as the adoption authority. Code Owners/branch protection remain independently
+required and are not enabled by this patch. Verify a real configured owner before
+claiming enforcement; template placeholders and fallback owner strings are not proof.
+
+V2 PR bodies use `Review risk`, `Review obligations`, `Review policy` (digest), and
+one `Review receipt: <id> <digest> <https://... or artifact:...>` for each genuinely
+validated completion. They omit `Review tier`; an Astra run must not be labeled
+Opus or Sonnet. A URL alone does not satisfy receipt validation. Unknown schema
+versions block. V1 receipts never become v2 attestations through label conversion.
+
+Cross-family constraints remain hard requirements. This default template seed uses
+execution independence and distinct slots because the existing template does not
+state a separate author/reviewer cross-family predicate. It is not authority to
+remove such a predicate from a project. The owner transition explicitly preserves
+all applicable diversity constraints; consumer reconciliation remains separate.
+
+To adopt, Groot must bind the finished patch and independently accepted source
+review to the real owner's authenticated transition record, set a verified owner
+and enable the policy through a separately reviewed base change. Preserve any old
+coordinator countersign, merge-card and Code Owner requirements until a separately
+recorded authority transition settles them. No historical review is reclassified.
+
+When a base policy is enabled, the legacy gate explicitly blocks with
+`adopted_policy_requires_v2` before consulting Jev. Unknown policy versions block
+instead of being parsed as v1. Unchanged bases without a policy, and explicit
+unresolvable-base fail-closed v1 reporting, retain their existing compatibility.
+
+
+### Inactive v2 boundary hardening
+
+The v2 gate and base readers share the verified system Git executor in
+`scripts/lib/sensitive-paths.mjs`; project PATH and npm's local executable prefix
+cannot choose Git. `/usr/bin/git` is the default. A trusted launcher may provide
+an absolute `PSTACK_GIT` override only with root-owned canonical executable and
+ancestors, none group/world-writable. Missing/unverified executables block; host,
+launcher, Node/Git installation and authenticated controller remain trusted.
+Current and adoption evidence use raw `--binary --no-ext-diff --no-textconv
+--ignore-submodules=none` patches, including final newline. This changes the
+unpublished evidence convention, so old proposal digests cannot authorize it.
+
+V2 completion binds the original policy's three repair/replan counter maxima in
+`appliedCounterLimits`, rejects later increases and counter resets, and blocks at
+equal-or-tighter limits. Supported team owners (`@org/team`) remain the configured
+owner through policy and authenticated authorization; exact equality and real
+actor authority are still required. See [model routing](model-routing.md) for the
+complete boundary and compatibility rules. The template policy remains disabled.

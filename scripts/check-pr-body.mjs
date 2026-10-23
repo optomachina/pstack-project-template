@@ -47,9 +47,13 @@ export function checkPrBody(body, review = null) {
   if (journey === null || PLACEHOLDER.test(journey)) problems.push('missing "Journey test: <spec or run URL | N/A - reason>"');
   else if (/^n\/a\b/i.test(journey) && !/^n\/a\s*[-–—:]\s*\S.{2,}/i.test(journey)) problems.push('"Journey test: N/A" needs " - <reason>"');
 
+  const allowedLegacy = ['schema','files','problems','sensitive','deterministic','jev','risk','review_tier','reviews_required','auto_merge','pr_size','config_sources'];
+  if (review && review.schema !== 'review-gate.v2' && Object.keys(review).some(k=>!allowedLegacy.includes(k))) problems.push('unknown legacy review field');
+  const isV2 = review?.schema === "review-gate.v2";
+  if (review?.schema && !["review-gate.v1", "review-gate.v2"].includes(review.schema)) problems.push("unknown review-gate schema");
   const tierText = field(text, "Review tier");
   const tier = tierText?.toLowerCase().match(/^(jev|sonnet|opus)\b/)?.[1] ?? null;
-  if (!tier) problems.push('missing "Review tier: jev|sonnet|opus"');
+  if (!isV2 && !tier) problems.push('missing "Review tier: jev|sonnet|opus"');
 
   const classesText = field(text, "Sensitive classes");
   let classes = null;
@@ -57,13 +61,14 @@ export function checkPrBody(body, review = null) {
   else classes = /^none\b/i.test(classesText) ? [] : classesText.split(/[,\s]+/).map((name) => name.replaceAll("`", "").trim().toLowerCase()).filter(Boolean);
 
   if (review?.sensitive?.sensitive) {
-    if (tier && tier !== "opus") problems.push(`the review gate found sensitive classes (${review.sensitive.classes.join(", ")}), so the review tier must be opus, not ${tier}`);
+    if (!isV2 && tier && tier !== "opus") problems.push(`the review gate found sensitive classes (${review.sensitive.classes.join(", ")}), so the review tier must be opus, not ${tier}`);
     const missing = classes ? review.sensitive.classes.filter((name) => !classes.includes(name)) : [];
     if (missing.length) problems.push(`"Sensitive classes" is missing: ${missing.join(", ")}`);
   }
-  if (review && tier && TIERS.indexOf(tier) < TIERS.indexOf(review.review_tier) && review.jev?.status === "accepted") {
+  if (!isV2 && review && tier && TIERS.indexOf(tier) < TIERS.indexOf(review.review_tier) && review.jev?.status === "accepted") {
     problems.push(`declared review tier ${tier} is below the gate's ${review.review_tier}`);
   }
+  if (isV2) problems.push(...checkCapabilityBody(text, review));
   return problems;
 }
 
@@ -97,4 +102,21 @@ export function main(argv = process.argv.slice(2), { stdout = console.log, stder
 
 if (invokedAsScript(import.meta.url)) {
   process.exitCode = main();
+}
+
+/** V2 references must agree with the base-validated receipt set; links alone confer no approval. */
+function checkCapabilityBody(text, review) {
+  const errors=[];
+  if(field(text,'Review tier')!==null) errors.push('v2 must not relabel a capability receipt as a legacy review tier');
+  if(review.status!=='consistent'||review.completion?.status!=='accepted')errors.push('v2 completion evidence is not accepted');
+  if(field(text,'Review risk')!==review.risk)errors.push('Review risk must match the base gate');
+  const ids=(field(text,'Review obligations')??'').split(/[,\s]+/).filter(Boolean);
+  const required=(review.obligations??[]).map(s=>s.id);
+  if(ids.join(',')!==required.join(',')&&!(required.length===0&&ids.join(',')==='none'))errors.push('Review obligations must match the base gate');
+  if(field(text,'Review policy')!==review.policy_digest)errors.push('Review policy must match the base digest');
+  for(const receipt of review.receipt_refs??[]) {
+    const prefix=`Review receipt: ${receipt.id} ${receipt.digest} `;
+    if(!text.split(/\r?\n/).some(line=>line.startsWith(prefix)&&/^(?:https:\/\/|artifact:)/.test(line.slice(prefix.length))))errors.push(`missing genuine completion receipt reference: ${receipt.id}`);
+  }
+  return errors;
 }
