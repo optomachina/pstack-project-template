@@ -28,10 +28,8 @@
  * Gates read the JSON from the base checkout. A change that removes, narrows
  * or reclassifies a glob, or deletes or breaks the file, is gate_loosening
  * (needs owner approval plus an independent Opus review); additions are free.
- * An edit to the code that applies the list (GATE_CODE_FILES) is flagged as
- * well. The report is report-only: it never changes the exit code. The list
- * also covers these control files (infra_ci), so a PR that edits them is
- * sensitive on its own.
+ * GATE_CODE_FILES edits are also flagged. The report is advisory; these
+ * controls are themselves sensitive (infra_ci).
  *
  * A base ref, when given (even as ""), must resolve to a commit or the call
  * fails (BaseRefError, CLI exit 2); the head copy of the list is used only
@@ -76,6 +74,9 @@ export const LOOSENING_CONFIG_INVALID = "config_invalid";
 export const LOOSENING_MATCHER_CHANGED = "matcher_changed";
 /** Code that applies the list or the gates; editing or deleting one is matcher_changed. */
 export const GATE_CODE_FILES = Object.freeze([
+  "scripts/file-size-gate.mjs",
+  ".file-size-allowlist.json",
+  ".githooks/pre-commit",
   MATCHER_PATH,
   REPORT_RUNNER_PATH,
   "scripts/lib/pstack-config.mjs",

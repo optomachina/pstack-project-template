@@ -15,6 +15,8 @@
     "sensitive-paths:render": "node scripts/lib/sensitive-paths.mjs render-agents",
     "review-gate": "node scripts/review-gate.mjs",
     "journey-tests:check": "node scripts/check-journey-tests.mjs",
+    "file-size:check": "node scripts/file-size-gate.mjs --staged",
+    "hooks:install": "git config --local core.hooksPath .githooks",
     "sync-template": "node scripts/sync-template.mjs",
     "render-self": "node scripts/sync-template.mjs --render-self"
   },
