@@ -1,0 +1,7 @@
+[
+  "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lock,bun.lockb,deno.lock}",
+  "**/{Cargo.lock,go.sum,Gemfile.lock,Pipfile.lock,poetry.lock,uv.lock,composer.lock,*.csproj.lock.json}",
+  "**/{generated,__generated__,codegen,vendor,vendored,third_party,third-party,node_modules,dist,build}/**",
+  "**/*.{generated,gen,min}.{js,ts,css}",
+  "**/*.{map,png,jpg,jpeg,gif,webp,ico,avif,pdf,zip,gz,tar,woff,woff2,ttf,eot,mp3,mp4,wasm,exe,dll,so,dylib}"
+]

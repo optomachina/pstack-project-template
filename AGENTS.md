@@ -68,7 +68,7 @@ Anything else, and anything on the sensitive list, needs {{OWNER}}'s explicit ap
 - **payments** (payments, pricing, billing): `**/*payment*{,/**}`, `**/*billing*{,/**}`, `**/*stripe*{,/**}`, `**/*pricing*{,/**}`, `**/*invoice*{,/**}`, `**/*checkout*{,/**}`, `**/*subscription*{,/**}`
 - **integrations** (external integrations): `**/*dispatch*{,/**}`, `**/*webhook*{,/**}`, `**/{adapters,integrations,providers}/**`
 - **secrets** (secrets and env): `**/*secret*{,/**}`, `**/*credential*{,/**}`, `**/*.pem`, `**/*.key`, `**/*.p12`, `**/keys/**`, `**/token{,s}.{json,yaml,yml,ts,js}`, `**/*vault*{,/**}`, `**/.env*`, `**/env.{ts,js,json}`
-- **infra_ci** (infra, ci, deploy, governance): `.github/workflows/**`, `.github/actions/**`, `templates/.github/**`, `.github/CODEOWNERS`, `.github/pull_request_template.md`, `**/{infra,terraform,deploy,k8s,helm,ops}/**`, `**/*.tf`, `**/Dockerfile*`, `**/docker-compose*`, `**/{vercel.json,netlify.toml,fly.toml}`, `scripts/deploy*{,/**}`, `scripts/release*{,/**}`, `docs/sensitive-paths.json`, `AGENTS.md`, `CLAUDE.md`, `pstack.config.json`, `.pstack-template-version`, `scripts/lib/**`, `scripts/sensitive-paths*`, `scripts/fixtures/sensitive-paths/**`, `scripts/fixtures/pstack-config/**`, `scripts/review-gate*`, `scripts/jev-client*`, `scripts/check-journey-tests*`, `scripts/check-pr-body*`, `scripts/validate-agent-contract*`, `scripts/preflight*`, `scripts/sync-template*`, `scripts/gate-workflows*`
+- **infra_ci** (infra, ci, deploy, governance): `.github/workflows/**`, `.github/actions/**`, `templates/.github/**`, `.github/CODEOWNERS`, `.github/pull_request_template.md`, `**/{infra,terraform,deploy,k8s,helm,ops}/**`, `**/*.tf`, `**/Dockerfile*`, `**/docker-compose*`, `**/{vercel.json,netlify.toml,fly.toml}`, `scripts/deploy*{,/**}`, `scripts/release*{,/**}`, `docs/sensitive-paths.json`, `AGENTS.md`, `CLAUDE.md`, `pstack.config.json`, `.file-size-allowlist.json`, `.githooks/**`, `scripts/file-size-gate*`, `.pstack-template-version`, `scripts/lib/**`, `scripts/sensitive-paths*`, `scripts/fixtures/sensitive-paths/**`, `scripts/fixtures/pstack-config/**`, `scripts/review-gate*`, `scripts/jev-client*`, `scripts/check-journey-tests*`, `scripts/check-pr-body*`, `scripts/validate-agent-contract*`, `scripts/preflight*`, `scripts/sync-template*`, `scripts/gate-workflows*`
 - **deps** (dependencies): `**/package.json`, `**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,deno.lock}`, `**/requirements*.txt`, `**/{pyproject.toml,uv.lock,poetry.lock,Pipfile,Pipfile.lock}`, `**/{Cargo.toml,Cargo.lock,go.mod,go.sum,Gemfile,Gemfile.lock}`
 <!-- sensitive-paths:end -->
 
@@ -93,6 +93,18 @@ Repository state and the durable run or issue record are authoritative. Plans, c
 - Put an independently mergeable change in its own issue and PR; a review or CI repair of the same change stays on its PR.
 
 ## Preflight and repair budget
+
+The file-size gate (`scripts/file-size-gate.mjs`) rejects new text files over
+5,000 estimated tokens (bytes / 4 = 20,000 bytes) and growth of existing files
+whose resulting size exceeds that budget. Unchanged or shrinking oversized files
+pass. Split by responsibility into focused modules, components or fixtures;
+keep new files within budget and stage the split before retrying. Run
+`npm run hooks:install` once per checkout (or call the gate from an existing hook
+manager), then `npm run file-size:check` for staged content. CI enforces the same
+rule in the required `ci` aggregate. `.file-size-allowlist.json` excludes lockfiles,
+generated/codegen, vendored and binary paths; keep exceptions precise and explain
+them in the PR. The base policy governs a change, so new exclusions take effect
+after landing. See the [file-size gate runbook](docs/runbooks/file-size-gate.md).
 
 Run `npm run preflight` (`scripts/preflight.sh`: typecheck, lint, unit tests, build, each when the project defines it) before opening or updating a PR. CI runs the same script, so a local pass predicts the hosted result. Paste its `preflight: <stage> PASS|FAIL|SKIP` lines into the PR body.
 

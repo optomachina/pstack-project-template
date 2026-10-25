@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -108,6 +108,11 @@ describe("syncTemplate", () => {
     const pkg = JSON.parse(read(target, "package.json"));
     assert.equal(pkg.scripts.test, "vitest run", "existing scripts are kept");
     assert.equal(pkg.scripts.preflight, PSTACK_SCRIPTS.preflight);
+    assert.equal(pkg.scripts["file-size:check"], PSTACK_SCRIPTS["file-size:check"]);
+    assert.ok(statSync(join(target, ".githooks/pre-commit")).mode & 0o111);
+    writeFileSync(join(target, ".file-size-allowlist.json"), '["custom/generated/**"]\n');
+    syncTemplate({ target });
+    assert.equal(read(target, ".file-size-allowlist.json"), '["custom/generated/**"]\n');
     const version = JSON.parse(read(target, VERSION_FILE));
     assert.equal(version.template, "pstack-template");
     assert.equal(version.version, JSON.parse(read(repoRoot, "package.json")).version);

@@ -19,6 +19,9 @@
 /.github/pull_request_template.md   {{OWNER_HANDLE}}
 /docs/sensitive-paths.json          {{OWNER_HANDLE}}
 /pstack.config.json                 {{OWNER_HANDLE}}
+/.file-size-allowlist.json           {{OWNER_HANDLE}}
+/.githooks/                         {{OWNER_HANDLE}}
+/scripts/file-size-gate*            {{OWNER_HANDLE}}
 /AGENTS.md                          {{OWNER_HANDLE}}
 /CLAUDE.md                          {{OWNER_HANDLE}}
 /.pstack-template-version           {{OWNER_HANDLE}}

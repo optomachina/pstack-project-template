@@ -19,6 +19,7 @@ A project-agnostic copy of OverDrafter's pstack engineering setup: an agent cont
 | `scripts/check-journey-tests.mjs` | Fails user-visible changes without a journey test change, unless the body says `Journey test: N/A - <reason>` |
 | `scripts/check-pr-body.mjs` | PR body gate: preflight lines, journey test, review tier, sensitive classes |
 | `scripts/preflight.sh` | typecheck, lint, test, build: each when `package.json` defines it, with a `preflight: <stage> PASS/FAIL/SKIP` line per stage |
+| `scripts/file-size-gate.mjs`, `.githooks/pre-commit` | Staged/CI file-size gate; exclusions in `.file-size-allowlist.json` |
 | `scripts/sync-template.mjs` | Install or update the template in a project |
 | `templates/.github/workflows/ci.yml` | `preflight`, `agent-contract`, `pr-gates` (sensitive report, review gate, journey check, all from the base copy), aggregate `ci` |
 | `templates/.github/workflows/pr-body-gate.yml` | `pr-body` check (runs on body edits without rerunning CI) |
@@ -76,6 +77,47 @@ npm run render-self                        # template repo only: re-render .gith
 ```
 
 Test files are named `*.node-test.mjs` so that projects using Vitest or Jest do not collect them. Run them with `node --test`.
+
+## File-size gate
+
+Text files have a 5,000-token budget, estimated as bytes / 4: exactly 20,000 bytes
+passes, and 20,001 fails. A new file above the budget fails. An existing file
+whose resulting size exceeds the budget fails only if it grows (including a file
+crossing the budget). Oversized files may stay the same size or shrink. Detected
+renames retain their baseline; copies count as new files. Deletions, symlinks and
+submodules are skipped. Counts use Git blob bytes, including multibyte characters.
+
+After syncing a project with `--add-scripts`, install the local hook explicitly:
+
+```bash
+npm run hooks:install                 # sets this checkout's core.hooksPath=.githooks
+npm run file-size:check               # checks the index against HEAD, not unstaged edits
+node scripts/file-size-gate.mjs --base-ref origin/main --head-ref HEAD
+```
+
+If you already use a hook manager, call `node scripts/file-size-gate.mjs --staged`
+from its pre-commit hook instead of changing `core.hooksPath`. Sync distributes
+the hook with executable permissions but does not activate it automatically.
+Initial commits compare staged files against an empty tree; stage the allowlist
+as well. CI's `file-size` job is part of the required `ci` aggregate, runs on PRs,
+default-branch pushes and merge groups, and compares complete changes against the
+PR base, previous push SHA or merge-group base respectively.
+
+`.file-size-allowlist.json` is a project-owned JSON array of exclusion globs using
+the same syntax as sensitive paths (`*`, `**`, `?`, `{a,b}`; case insensitive,
+dotfiles included). Defaults cover common lockfiles, generated/codegen outputs,
+vendored directories and binary extensions. Add precise paths for other generated
+outputs, lockfiles or assets; explain exceptions in the PR. Content containing NUL
+bytes or invalid UTF-8 is also treated as binary, even without a known extension.
+Sync seeds this file once and preserves project edits. The hook and CI use the
+base commit's allowlist; only the commit introducing it uses the staged/head copy.
+CI also runs the base copy of the script once installed. Missing or invalid policy
+and invalid refs fail closed. A new exception takes effect after it lands.
+
+When the gate fails, split by responsibility: extract cohesive helpers or
+components, move test fixtures/data to separate files, and keep a small entry
+point. Keep each new file within budget and shrink existing oversized files;
+stage the split and retry. Moving code into another oversized file fails too.
 
 ## Design notes
 

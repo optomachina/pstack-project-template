@@ -4,27 +4,15 @@
  *
  *   node scripts/sync-template.mjs <target-dir> [--dry-run] [--project <name>] [--owner <name>] [--add-scripts]
  *
- * File modes (MANIFEST):
- *   managed  overwritten from the template. In Markdown and YAML files the
- *            content between `<!-- project:begin [id] -->` and
- *            `<!-- project:end [id] -->` lines is kept from the target (matched by id, or by position for
- *            unnamed blocks). A target block the template no longer has is kept
- *            at the end of the file and reported.
- *   seed     copied only when the target has none (pstack.config.json is
- *            project-owned and never overwritten).
- *   union    docs/sensitive-paths.json: the template's classes and globs are
- *            added when missing; nothing in the target is removed or
- *            reclassified (adding is free, removing loosens the gate).
+ * MANIFEST modes: managed files preserve project blocks in prose; seed files
+ * are project-owned and never overwritten; union adds missing sensitive globs
+ * without removing or reclassifying existing entries.
  * An entry with a `source` is read from that template path instead of `path`:
  * the workflows live in templates/.github/workflows/ with placeholders, and the
  * template's own .github/workflows/ are rendered copies (--render-self) so the
  * template repository runs the same gate on its own default branch.
- * After copying, the PROJECT, OWNER and DEFAULT_BRANCH placeholders in Markdown,
- * workflow and CODEOWNERS files are filled from the target's pstack.config.json
- * (when it has real values; DEFAULT_BRANCH defaults to "main"), OWNER_HANDLE
- * from project.ownerHandle (default DEFAULT_OWNER_HANDLE), the AGENTS.md
- * sensitive-paths block is regenerated from the target's list, and
- * .pstack-template-version records the template version, commit and file hashes.
+ * Sync fills prose placeholders from the target config, renders the AGENTS.md
+ * sensitive list, and records provenance and hashes in .pstack-template-version.
  *
  * --project/--owner fill a freshly seeded pstack.config.json. --add-scripts adds
  * the pstack npm scripts to the target package.json without replacing any
@@ -60,6 +48,10 @@ export const MANIFEST = Object.freeze([
   { path: "AGENTS.md", mode: "managed" },
   { path: "CLAUDE.md", mode: "managed" },
   { path: "pstack.config.json", mode: "seed" },
+  { path: ".file-size-allowlist.json", mode: "seed" },
+  { path: ".githooks/pre-commit", mode: "managed" },
+  { path: "scripts/file-size-gate.mjs", mode: "managed" },
+  { path: "scripts/file-size-gate.node-test.mjs", mode: "managed" },
   { path: "docs/sensitive-paths.json", mode: "union" },
   { path: "docs/agent-graph.md", mode: "managed" },
   { path: "docs/runbooks/pr-lifecycle.md", mode: "managed" },
@@ -68,6 +60,7 @@ export const MANIFEST = Object.freeze([
   { path: "docs/runbooks/merge-and-rollback.md", mode: "managed" },
   { path: "docs/runbooks/branch-protection.md", mode: "managed" },
   { path: "docs/runbooks/task-contract.md", mode: "managed" },
+  { path: "docs/runbooks/file-size-gate.md", mode: "managed" },
   { path: ".github/workflows/ci.yml", source: "templates/.github/workflows/ci.yml", mode: "managed" },
   { path: ".github/workflows/pr-body-gate.yml", source: "templates/.github/workflows/pr-body-gate.yml", mode: "managed" },
   { path: ".github/pull_request_template.md", mode: "managed" },
@@ -102,6 +95,8 @@ export const PSTACK_SCRIPTS = Object.freeze({
   "sensitive-paths:render": "node scripts/lib/sensitive-paths.mjs render-agents",
   "review-gate": "node scripts/review-gate.mjs",
   "journey-tests:check": "node scripts/check-journey-tests.mjs",
+  "file-size:check": "node scripts/file-size-gate.mjs --staged",
+  "hooks:install": "git config --local core.hooksPath .githooks",
 });
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
@@ -240,8 +235,10 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
       if (current !== null) next = current;
       else {
         const seeded = JSON.parse(source);
-        if (project) seeded.project.name = project;
-        if (owner) seeded.project.owner = owner;
+        if (entry.path === PSTACK_CONFIG_FILE) {
+          if (project) seeded.project.name = project;
+          if (owner) seeded.project.owner = owner;
+        }
         next = `${JSON.stringify(seeded, null, 2)}\n`;
       }
     } else if (entry.mode === "union") {
@@ -284,7 +281,7 @@ export function syncTemplate({ target, templateRoot = TEMPLATE_ROOT, dryRun = fa
     if (!dryRun && (action === "create" || action === "update")) {
       mkdirSync(path.dirname(destination), { recursive: true });
       writeFileSync(destination, next);
-      if (entry.path.endsWith(".sh")) execFileSync("chmod", ["+x", destination]);
+      if (entry.path.endsWith(".sh") || entry.path.startsWith(".githooks/")) execFileSync("chmod", ["+x", destination]);
     }
   }
 

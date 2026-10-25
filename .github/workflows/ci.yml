@@ -50,6 +50,46 @@ permissions:
   contents: read
 
 jobs:
+  file-size:
+    name: file-size
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check file sizes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ]; then BASE_SHA=$(git rev-parse HEAD^1); fi
+          args=(--head-ref HEAD)
+          if [ -z "$BASE_SHA" ] || [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            args+=(--empty-base)
+            source=head
+          else
+            args+=(--base-ref "$BASE_SHA")
+            source=base
+            git cat-file -e "$BASE_SHA:scripts/file-size-gate.mjs" 2>/dev/null || source=head
+          fi
+          gate="$RUNNER_TEMP/file-size-gate"
+          for file in scripts/file-size-gate.mjs scripts/lib/sensitive-paths.mjs; do
+            mkdir -p "$gate/$(dirname "$file")"
+            if [ "$source" = base ]; then git show "$BASE_SHA:$file" > "$gate/$file"; else cp "$file" "$gate/$file"; fi
+          done
+          echo "File-size gate scripts taken from: $source"
+          node "$gate/scripts/file-size-gate.mjs" "${args[@]}"
+
   preflight:
     name: preflight
     runs-on: ubuntu-latest
@@ -220,7 +260,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [preflight, agent-contract, pr-gates]
+    needs: [preflight, agent-contract, pr-gates, file-size]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -229,9 +269,10 @@ jobs:
           PREFLIGHT: ${{ needs.preflight.result }}
           AGENT_CONTRACT: ${{ needs.agent-contract.result }}
           PR_GATES: ${{ needs.pr-gates.result }}
+          FILE_SIZE: ${{ needs.file-size.result }}
         run: |
-          echo "preflight=$PREFLIGHT agent-contract=$AGENT_CONTRACT pr-gates=$PR_GATES"
+          echo "preflight=$PREFLIGHT agent-contract=$AGENT_CONTRACT pr-gates=$PR_GATES file-size=$FILE_SIZE"
           # Skipped, cancelled and failed all block: none of them is a pass.
-          for result in "$PREFLIGHT" "$AGENT_CONTRACT" "$PR_GATES"; do
+          for result in "$PREFLIGHT" "$AGENT_CONTRACT" "$PR_GATES" "$FILE_SIZE"; do
             [ "$result" = success ] || exit 1
           done
